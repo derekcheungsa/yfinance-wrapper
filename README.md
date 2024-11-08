@@ -104,4 +104,5 @@ If you find this project helpful and would like to support my work, consider buy
 
 ## Disclaimer
 
+
 This is not an official Yahoo Finance repository. All data and information provided by this API wrapper are sourced from Yahoo Finance and are subject to their terms of use.

@@ -1,7 +1,7 @@
 [project]
-name = "repl-nix-workspace"
+name = "yahoo-finance-api"
 version = "0.1.0"
-description = "Add your description here"
+description = "A REST API wrapper for Yahoo Finance data built with Flask"
 requires-python = ">=3.11"
 dependencies = [
     "email-validator>=2.2.0",
