@@ -1,6 +1,6 @@
 import os
-from api.app import create_app
+from app import app
 
 if __name__ == "__main__":
-    app = create_app(os.environ.get('FLASK_ENV', 'default'))
+    app.config['DEBUG'] = os.environ.get('FLASK_ENV', 'default') == 'development'
     app.run(host="0.0.0.0", port=5000, debug=app.config['DEBUG'])

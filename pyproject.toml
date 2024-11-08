@@ -23,7 +23,7 @@ build-backend = "setuptools.build_meta"
 packages = ["api"]
 
 [project.scripts]
-yahoo-finance-api = "api.app:create_app"
+yahoo-finance-api = "app:app"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/yahoo-finance-api"

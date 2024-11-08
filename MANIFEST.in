@@ -1,0 +1,6 @@
+include api/templates/*
+include api/static/**/*
+include requirements.txt
+include README.md
+include LICENSE
+include CONTRIBUTING.md
