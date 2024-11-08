@@ -29,13 +29,42 @@ def get_stock_data(ticker):
         stock = yf.Ticker(ticker)
         info = stock.info
         
+        # Try to get the change percentage from multiple possible fields
+        change = info.get('regularMarketChangePercent') or info.get('priceChangePercent')
+        
+        # If change is still None, calculate it using historical data
+        if change is None:
+            try:
+                # Get today's data including pre/post market
+                history = stock.history(period='1d', prepost=True)
+                if not history.empty:
+                    # Get the previous close from info
+                    prev_close = info.get('previousClose')
+                    current_price = history['Close'].iloc[-1]
+                    
+                    if prev_close and current_price:
+                        change = ((current_price - prev_close) / prev_close) * 100
+            except Exception as e:
+                print(f"Error calculating change: {e}")
+                change = 0
+        
+        # Get current price from multiple possible fields
+        price = (info.get('currentPrice') or 
+                info.get('regularMarketPrice') or 
+                info.get('previousClose'))
+        
+        # Get volume from multiple possible fields
+        volume = (info.get('volume') or 
+                 info.get('regularMarketVolume') or 
+                 info.get('averageVolume'))
+        
         return jsonify({
             'symbol': ticker,
             'name': info.get('longName'),
-            'price': info.get('currentPrice'),
-            'change': info.get('regularMarketChangePercent'),
+            'price': price,
+            'change': change,
             'market_cap': info.get('marketCap'),
-            'volume': info.get('volume')
+            'volume': volume
         })
     except Exception as e:
         return jsonify(error=str(e)), 500
