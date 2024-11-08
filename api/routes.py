@@ -19,6 +19,248 @@ def validate_numeric(value, fallback=None):
     except (ValueError, TypeError):
         return fallback
 
+@api_bp.route('/stock/<ticker>')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_stock_data(ticker):
+    """Get current stock data"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        data = {
+            'symbol': ticker,
+            'price': validate_numeric(info.get('currentPrice')),
+            'change': validate_numeric(info.get('regularMarketChange')),
+            'change_percent': validate_numeric(info.get('regularMarketChangePercent')),
+            'volume': validate_numeric(info.get('regularMarketVolume')),
+            'market_cap': validate_numeric(info.get('marketCap')),
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch stock data: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/history')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_stock_history(ticker):
+    """Get historical stock data"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    period = request.args.get('period', '6mo')
+    interval = request.args.get('interval', '1d')
+    
+    try:
+        stock = yf.Ticker(ticker)
+        history = stock.history(period=period, interval=interval)
+        
+        data = {
+            'symbol': ticker,
+            'period': period,
+            'interval': interval,
+            'data': [{
+                'date': index.isoformat(),
+                'open': validate_numeric(row['Open']),
+                'high': validate_numeric(row['High']),
+                'low': validate_numeric(row['Low']),
+                'close': validate_numeric(row['Close']),
+                'volume': validate_numeric(row['Volume'])
+            } for index, row in history.iterrows()]
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch historical data: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/analysis/moving-averages')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_moving_averages(ticker):
+    """Get moving averages analysis"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    period = request.args.get('period', '6mo')
+    short_window = int(request.args.get('short_window', 20))
+    long_window = int(request.args.get('long_window', 50))
+    
+    try:
+        stock = yf.Ticker(ticker)
+        history = stock.history(period=period)
+        
+        # Calculate SMAs
+        sma_short = history['Close'].rolling(window=short_window).mean()
+        sma_long = history['Close'].rolling(window=long_window).mean()
+        
+        # Calculate EMAs
+        ema_short = history['Close'].ewm(span=short_window).mean()
+        ema_long = history['Close'].ewm(span=long_window).mean()
+        
+        data = {
+            'symbol': ticker,
+            'period': period,
+            'indicators': {
+                'sma': {
+                    f'SMA_{short_window}': validate_numeric(sma_short.iloc[-1]),
+                    f'SMA_{long_window}': validate_numeric(sma_long.iloc[-1])
+                },
+                'ema': {
+                    f'EMA_{short_window}': validate_numeric(ema_short.iloc[-1]),
+                    f'EMA_{long_window}': validate_numeric(ema_long.iloc[-1])
+                }
+            },
+            'current_price': validate_numeric(history['Close'].iloc[-1])
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to calculate moving averages: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/analysis/rsi')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_rsi(ticker):
+    """Get RSI analysis"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    period = request.args.get('period', '6mo')
+    window = int(request.args.get('window', 14))
+    
+    try:
+        stock = yf.Ticker(ticker)
+        history = stock.history(period=period)
+        
+        # Calculate daily price changes
+        delta = history['Close'].diff()
+        
+        # Separate gains and losses
+        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        
+        # Calculate RS and RSI
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        data = {
+            'symbol': ticker,
+            'period': period,
+            'window': window,
+            'rsi': validate_numeric(rsi.iloc[-1]),
+            'rsi_values': {
+                'last_5_days': [validate_numeric(x) for x in rsi.tail(5).tolist()]
+            }
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to calculate RSI: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/analysis/statistics')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_statistics(ticker):
+    """Get statistical analysis"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    period = request.args.get('period', '1y')
+    
+    try:
+        stock = yf.Ticker(ticker)
+        history = stock.history(period=period)
+        
+        # Calculate returns
+        returns = history['Close'].pct_change()
+        
+        data = {
+            'symbol': ticker,
+            'period': period,
+            'statistics': {
+                'volatility': validate_numeric(returns.std() * np.sqrt(252)),  # Annualized volatility
+                'avg_daily_return': validate_numeric(returns.mean()),
+                'max_drawdown': validate_numeric(((history['Close'].cummax() - history['Close']) / history['Close'].cummax()).max()),
+                'sharpe_ratio': validate_numeric(returns.mean() / returns.std() * np.sqrt(252)) if returns.std() != 0 else None,
+                'skewness': validate_numeric(returns.skew()),
+                'kurtosis': validate_numeric(returns.kurtosis())
+            }
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to calculate statistics: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/info')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_company_info(ticker):
+    """Get company information"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        data = {
+            'symbol': ticker,
+            'name': info.get('longName'),
+            'sector': info.get('sector'),
+            'industry': info.get('industry'),
+            'description': info.get('longBusinessSummary'),
+            'website': info.get('website'),
+            'market_cap': validate_numeric(info.get('marketCap')),
+            'employees': info.get('fullTimeEmployees'),
+            'country': info.get('country'),
+            'exchange': info.get('exchange')
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch company info: {str(e)}"), 500
+
+@api_bp.route('/market/summary')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_market_summary():
+    """Get market summary"""
+    try:
+        indices = ['^GSPC', '^DJI', '^IXIC', '^RUT']  # S&P 500, Dow Jones, NASDAQ, Russell 2000
+        
+        data = {
+            'indices': [],
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+        
+        for index in indices:
+            try:
+                ticker = yf.Ticker(index)
+                info = ticker.info
+                
+                index_data = {
+                    'symbol': index,
+                    'name': info.get('shortName'),
+                    'price': validate_numeric(info.get('regularMarketPrice')),
+                    'change': validate_numeric(info.get('regularMarketChange')),
+                    'change_percent': validate_numeric(info.get('regularMarketChangePercent')),
+                    'volume': validate_numeric(info.get('regularMarketVolume'))
+                }
+                
+                data['indices'].append(index_data)
+            except Exception:
+                continue
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch market summary: {str(e)}"), 500
+
+# Keep the existing options chain endpoint
 @api_bp.route('/stock/<ticker>/options')
 @rate_limiter.limit
 @cache.cached(timeout=300)
