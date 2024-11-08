@@ -29,7 +29,11 @@ waitForPort = 5000
 
 [deployment]
 run = ["sh", "-c", "python main.py"]
+deploymentTarget = "cloudrun"
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[nix]
+channel = "stable-24_05"
