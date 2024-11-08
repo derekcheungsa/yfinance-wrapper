@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from flask_caching import Cache
+from api.extensions import cache
 import yfinance as yf
 from .utils import validate_ticker, RateLimiter
 import datetime
@@ -7,7 +7,6 @@ import pandas as pd
 import numpy as np
 
 api_bp = Blueprint('api', __name__)
-cache = Cache()
 rate_limiter = RateLimiter(requests=100, window=60)  # 100 requests per minute
 
 @api_bp.errorhandler(429)

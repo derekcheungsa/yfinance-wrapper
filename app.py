@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template
 from flask_cors import CORS
-from flask_caching import Cache
+from api.extensions import cache
 from api.routes import api_bp
 
 # Initialize Flask app
@@ -12,7 +12,7 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev')  # Use environment va
 CORS(app)
 
 # Configure caching
-cache = Cache(app, config={
+cache.init_app(app, config={
     'CACHE_TYPE': 'SimpleCache',
     'CACHE_DEFAULT_TIMEOUT': 300
 })
