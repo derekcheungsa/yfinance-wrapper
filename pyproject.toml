@@ -20,10 +20,10 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["api"]
+packages = ["api", "."]
 
 [project.scripts]
-yahoo-finance-api = "app:app"
+yahoo-finance-api = "main:app"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/yahoo-finance-api"
