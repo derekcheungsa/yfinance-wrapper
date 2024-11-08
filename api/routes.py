@@ -256,3 +256,57 @@ def get_earnings_estimates(ticker):
         error_message = str(e)
         specific_error = "Data source error" if "request" in error_message.lower() else "Data processing error"
         return jsonify(error=f"Failed to fetch earnings data: {specific_error} - {error_message}"), 500
+
+@api_bp.route('/market/summary')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_market_summary():
+    """Get summary of major market indices"""
+    try:
+        # List of major market indices
+        indices = ['^GSPC', '^DJI', '^IXIC', '^RUT']
+        indices_names = {
+            '^GSPC': 'S&P 500',
+            '^DJI': 'Dow Jones Industrial Average',
+            '^IXIC': 'NASDAQ Composite',
+            '^RUT': 'Russell 2000'
+        }
+        
+        summary_data = {}
+        for symbol in indices:
+            index = yf.Ticker(symbol)
+            info = index.info
+            
+            # Get current price with fallback
+            current_price = validate_numeric(info.get('regularMarketPrice'))
+            previous_close = validate_numeric(info.get('previousClose'))
+            
+            # Calculate price change and percentage
+            price_change = None
+            price_change_percent = None
+            
+            if current_price is not None and previous_close is not None:
+                price_change = current_price - previous_close
+                if previous_close != 0:
+                    price_change_percent = (price_change / previous_close) * 100
+            
+            summary_data[indices_names[symbol]] = {
+                'symbol': symbol,
+                'price': current_price,
+                'change': validate_numeric(price_change),
+                'change_percent': validate_numeric(price_change_percent),
+                'previous_close': previous_close,
+                'volume': validate_numeric(info.get('volume')),
+                'data_quality': {
+                    'has_price_data': current_price is not None,
+                    'has_volume_data': info.get('volume') is not None
+                }
+            }
+        
+        return jsonify({
+            'indices': summary_data,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'data_source': 'Yahoo Finance'
+        })
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch market summary: {str(e)}"), 500
