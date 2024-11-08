@@ -18,7 +18,6 @@ def validate_numeric(value, fallback=None):
     except (ValueError, TypeError):
         return fallback
 
-# Add the basic stock endpoint
 @api_bp.route('/stock/<ticker>')
 @rate_limiter.limit
 @cache.cached(timeout=300)
@@ -136,3 +135,68 @@ def get_price_targets(ticker):
         return jsonify(price_target_data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch price target data: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/analysis/earnings')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_earnings_estimates(ticker):
+    """Get EPS estimates and earnings data"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Get earnings estimates data
+        eps_current = validate_numeric(info.get('trailingEps'))
+        eps_forward = validate_numeric(info.get('forwardEps'))
+        eps_current_year = validate_numeric(info.get('currentYearEps'))
+        eps_next_quarter = validate_numeric(info.get('earningsQuarterlyGrowth'))  # Fixed: Using correct field for quarterly estimates
+        eps_next_year = validate_numeric(info.get('earningsNextYear'))
+        
+        # Calculate growth rates
+        eps_growth = None
+        if eps_forward is not None and eps_current is not None and eps_current != 0:
+            eps_growth = ((eps_forward - eps_current) / abs(eps_current)) * 100
+            
+        # Get earnings calendar data
+        calendar = stock.calendar
+        if calendar is not None:
+            last_earnings_date = calendar.get('Earnings Date', [None])[0] if isinstance(calendar.get('Earnings Date'), list) else None
+            next_earnings_date = calendar.get('Earnings Date', [None])[-1] if isinstance(calendar.get('Earnings Date'), list) else None
+        else:
+            last_earnings_date = None
+            next_earnings_date = None
+            
+        earnings_data = {
+            'symbol': ticker,
+            'eps': {
+                'current': eps_current,
+                'forward': eps_forward,
+                'current_year': eps_current_year,
+                'next_quarter': eps_next_quarter,
+                'next_year': eps_next_year,
+                'growth_percent': validate_numeric(eps_growth)
+            },
+            'ratios': {
+                'pe_ratio': validate_numeric(info.get('trailingPE')),
+                'forward_pe': validate_numeric(info.get('forwardPE')),
+                'peg_ratio': validate_numeric(info.get('pegRatio'))
+            },
+            'earnings_dates': {
+                'last_earnings_date': last_earnings_date.strftime('%Y-%m-%d') if last_earnings_date else None,
+                'next_earnings_date': next_earnings_date.strftime('%Y-%m-%d') if next_earnings_date else None
+            },
+            'data_quality': {
+                'has_current_eps': eps_current is not None,
+                'has_forward_eps': eps_forward is not None,
+                'has_pe_ratio': info.get('trailingPE') is not None,
+                'has_earnings_dates': next_earnings_date is not None,
+                'has_growth_estimates': eps_growth is not None
+            }
+        }
+        
+        return jsonify(earnings_data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch earnings data: {str(e)}"), 500
