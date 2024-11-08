@@ -28,6 +28,7 @@
             <div class="card-body">
                 <h2>Endpoints</h2>
                 
+                <!-- Previous endpoints remain unchanged -->
                 <div class="endpoint mb-4">
                     <h3>Get Stock Data</h3>
                     <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}</code>
@@ -75,6 +76,35 @@
                     <code class="d-block bg-dark p-2 rounded">GET /market/summary</code>
                     <p>Returns summary of major market indices.</p>
                     <button class="btn btn-primary" onclick="tryEndpoint('/api/market/summary')">Try it</button>
+                </div>
+
+                <!-- New analyst data endpoints -->
+                <div class="endpoint mb-4">
+                    <h3>Get Earnings Estimates</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/earnings</code>
+                    <p>Returns EPS estimates including current year, next quarter, and growth rates.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/earnings')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Revenue Forecasts</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/revenue</code>
+                    <p>Returns revenue forecasts including growth rates and profit margins.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/revenue')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Analyst Recommendations</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/recommendations</code>
+                    <p>Returns recent analyst recommendations and ratings changes.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/recommendations')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Price Targets</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/price-targets</code>
+                    <p>Returns analyst price targets including high, low, mean, and median targets.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/price-targets')">Try it</button>
                 </div>
             </div>
         </div>
