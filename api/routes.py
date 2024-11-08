@@ -74,3 +74,65 @@ def get_stock_data(ticker):
         return jsonify(stock_data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch stock data: {str(e)}"), 500
+
+@api_bp.route('/stock/<ticker>/analysis/price-targets')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_price_targets(ticker):
+    """Get analyst price targets for a stock"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Get current price for reference
+        current_price = validate_numeric(info.get('currentPrice'))
+        if current_price is None:
+            current_price = validate_numeric(info.get('regularMarketPrice'))
+        
+        # Get price target data with fallbacks
+        target_mean = validate_numeric(info.get('targetMeanPrice'))
+        target_median = validate_numeric(info.get('targetMedianPrice'))
+        target_high = validate_numeric(info.get('targetHighPrice'))
+        target_low = validate_numeric(info.get('targetLowPrice'))
+        
+        # Calculate potential returns if we have valid targets and current price
+        mean_return_percent = None
+        if target_mean is not None and current_price is not None and current_price != 0:
+            mean_return_percent = ((target_mean - current_price) / current_price) * 100
+        
+        # Get number of analysts
+        num_analysts = info.get('numberOfAnalystOpinions')
+        if isinstance(num_analysts, str):
+            try:
+                num_analysts = int(num_analysts)
+            except ValueError:
+                num_analysts = None
+        
+        price_target_data = {
+            'symbol': ticker,
+            'current_price': current_price,
+            'price_targets': {
+                'mean': target_mean,
+                'median': target_median,
+                'high': target_high,
+                'low': target_low,
+                'mean_return_percent': validate_numeric(mean_return_percent)
+            },
+            'coverage': {
+                'number_of_analysts': num_analysts,
+                'last_update': info.get('lastPriceTargetUpdate')
+            },
+            'data_quality': {
+                'has_current_price': current_price is not None,
+                'has_mean_target': target_mean is not None,
+                'has_analyst_count': num_analysts is not None,
+                'target_spread': validate_numeric(target_high - target_low) if target_high is not None and target_low is not None else None
+            }
+        }
+        
+        return jsonify(price_target_data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch price target data: {str(e)}"), 500
