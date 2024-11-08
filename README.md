@@ -1,6 +1,7 @@
 # Yahoo Finance API Wrapper
 
-A production-ready REST API wrapper for Yahoo Finance data built with Flask, providing real-time stock data, historical prices, company information, and market summaries.
+A REST API wrapper for Yahoo Finance data built with Flask, providing real-time stock data, historical prices, company information, and market summaries. This is a wrapper on the popular yfinance python library.
+Built using Replit Agent.
 
 ## Features
 
@@ -97,3 +98,10 @@ Built with:
 - yfinance (Yahoo Finance API)
 - pandas & numpy (Data processing)
 - Flask-Caching (Response caching)
+
+## Support
+If you find this project helpful and would like to support my work, consider buying me a coffee at [buymeacoffee.com/aifornoncoders](https://buymeacoffee.com/aifornoncoders). Your support means a lot!
+
+## Disclaimer
+
+This is not an official Yahoo Finance repository. All data and information provided by this API wrapper are sourced from Yahoo Finance and are subject to their terms of use.
