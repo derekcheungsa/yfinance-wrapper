@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yahoo Finance API Documentation</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="/static/css/custom.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Yahoo Finance API</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1>API Documentation</h1>
+        
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2>Base URL</h2>
+                <code class="d-block bg-dark p-2 rounded">/api</code>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2>Endpoints</h2>
+                
+                <div class="endpoint mb-4">
+                    <h3>Get Stock Data</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}</code>
+                    <p>Returns current stock data including price, change, market cap, and volume.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Stock History</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/history?period={period}&interval={interval}</code>
+                    <p>Returns historical stock data. Period options: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/history')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Company Information</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/info</code>
+                    <p>Returns detailed company information including sector, industry, and description.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/info')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Market Summary</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /market/summary</code>
+                    <p>Returns summary of major market indices.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/market/summary')">Try it</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2>Response</h2>
+                <pre id="response" class="bg-dark p-3 rounded">Click 'Try it' to see response</pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/docs.js"></script>
+</body>
+</html>

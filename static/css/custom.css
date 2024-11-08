@@ -1,0 +1,19 @@
+.endpoint {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding-bottom: 1rem;
+}
+
+code {
+    color: var(--bs-info);
+}
+
+pre#response {
+    max-height: 400px;
+    overflow-y: auto;
+    color: var(--bs-info);
+}
+
+.card {
+    background-color: var(--bs-dark);
+    border-color: var(--bs-border-color);
+}
