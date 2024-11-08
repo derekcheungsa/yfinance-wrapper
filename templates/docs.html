@@ -27,8 +27,7 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h2>Endpoints</h2>
-                
-                <!-- Previous endpoints remain unchanged -->
+
                 <div class="endpoint mb-4">
                     <h3>Get Stock Data</h3>
                     <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}</code>
@@ -78,7 +77,13 @@
                     <button class="btn btn-primary" onclick="tryEndpoint('/api/market/summary')">Try it</button>
                 </div>
 
-                <!-- New analyst data endpoints -->
+                <div class="endpoint mb-4">
+                    <h3>Get Options Chain</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/options</code>
+                    <p>Returns options chain data including calls and puts for available expiration dates.</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/options')">Try it</button>
+                </div>
+
                 <div class="endpoint mb-4">
                     <h3>Get Earnings Estimates</h3>
                     <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/earnings</code>
