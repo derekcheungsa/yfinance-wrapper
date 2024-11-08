@@ -43,6 +43,27 @@
                 </div>
 
                 <div class="endpoint mb-4">
+                    <h3>Get Moving Averages Analysis</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/moving-averages?period={period}&short_window={short}&long_window={long}</code>
+                    <p>Returns SMA and EMA analysis. Default period: 6mo, short_window: 20, long_window: 50</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/moving-averages')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get RSI Analysis</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/rsi?period={period}&window={window}</code>
+                    <p>Returns Relative Strength Index analysis. Default period: 6mo, window: 14</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/rsi')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
+                    <h3>Get Statistical Analysis</h3>
+                    <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/statistics?period={period}</code>
+                    <p>Returns statistical analysis including volatility and returns. Default period: 1y</p>
+                    <button class="btn btn-primary" onclick="tryEndpoint('/api/stock/AAPL/analysis/statistics')">Try it</button>
+                </div>
+
+                <div class="endpoint mb-4">
                     <h3>Get Company Information</h3>
                     <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/info</code>
                     <p>Returns detailed company information including sector, industry, and description.</p>
