@@ -300,7 +300,7 @@ def get_options_chain(ticker):
         }
         
         # Get options data for each expiration date
-        for date in expiration_dates[:3]:  # Limit to first 3 dates to avoid timeout
+        for date in expiration_dates[:5]:  # Limit to first 3 dates to avoid timeout
             calls = stock.option_chain(date).calls
             puts = stock.option_chain(date).puts
             
