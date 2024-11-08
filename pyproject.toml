@@ -1,5 +1,5 @@
 [project]
-name = "yahoo-finance-api"
+name = "yahoo_finance_api"
 version = "0.1.0"
 description = "A REST API wrapper for Yahoo Finance data built with Flask"
 requires-python = ">=3.11"
