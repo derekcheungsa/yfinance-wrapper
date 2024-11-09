@@ -134,14 +134,17 @@ def get_stock_history(ticker):
             period,
             'interval':
             interval,
-            'data': [{
-                'date': index.isoformat(),
-                'open': validate_numeric(row['Open']),
-                'high': validate_numeric(row['High']),
-                'low': validate_numeric(row['Low']),
-                'close': validate_numeric(row['Close']),
-                'volume': validate_numeric(row['Volume'])
-            } for index, row in history.iterrows()]
+            'data': [
+                {
+                    'date':
+                    index.strftime("%Y-%m-%d"),  # Change here to format date
+                    'open': validate_numeric(row['Open']),
+                    'high': validate_numeric(row['High']),
+                    'low': validate_numeric(row['Low']),
+                    'close': validate_numeric(row['Close']),
+                    'volume': validate_numeric(row['Volume'])
+                } for index, row in history.iterrows()
+            ]
         }
 
         return jsonify(data)
@@ -249,17 +252,24 @@ def get_option_chain(ticker):
         stock = yf.Ticker(ticker)
         options = stock.option_chain()
 
+        # Replace NaN values with None for JSON serializability
+        calls = options.calls.applymap(lambda x: x if pd.notnull(x) else None)
+        puts = options.puts.applymap(lambda x: x if pd.notnull(x) else None)
+
+        # Convert DataFrame to dictionary with custom NaN replacements
+        call_options = calls.to_dict(orient='records')
+        put_options = puts.to_dict(orient='records')
+
         option_data = {
             'symbol': ticker,
-            'call_options': options.calls.to_dict(orient='records'),
-            'put_options': options.puts.to_dict(orient='records'),
+            'call_options': call_options,
+            'put_options': put_options,
             'timestamp': datetime.datetime.now().isoformat()
         }
 
         return jsonify(option_data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
-
 
 @api_bp.route('/stock/<ticker>/earnings_estimate')
 @rate_limiter.limit
