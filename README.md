@@ -1,17 +1,15 @@
 # Yahoo Finance API Wrapper
 
-A REST API wrapper for Yahoo Finance data built with Flask, providing real-time stock data, historical prices, company information, and market summaries. This is a wrapper on the popular yfinance python library.
+A REST API wrapper for Yahoo Finance data built with Flask, providing real-time stock data, historical prices, company information, and earnings data. This is a wrapper on the popular yfinance python library.
 Built using Replit Agent.
 
 ## Features
 
 - Real-time stock data endpoints
 - Historical price data with customizable periods
-- Technical analysis indicators (Moving Averages, RSI)
-- Statistical analysis (Volatility, Returns)
-- Options chain data with implied volatility
-- Market summaries for major indices
-- Analyst data (EPS estimates, Price targets)
+- Detailed company information
+- Options chain data
+- Earnings estimates data
 - Enterprise-grade features:
   - Redis caching
   - Rate limiting
@@ -38,22 +36,11 @@ The server will start at `http://0.0.0.0:5000`
 - `GET /api/stock/{ticker}/history` - Get historical stock data
 - `GET /api/stock/{ticker}/info` - Get company information
 
-### Technical Analysis
-- `GET /api/stock/{ticker}/analysis/moving-averages` - Get SMA and EMA analysis
-- `GET /api/stock/{ticker}/analysis/rsi` - Get RSI analysis
-- `GET /api/stock/{ticker}/analysis/statistics` - Get statistical analysis
-
-### Market Data
-- `GET /api/market/summary` - Get summary of major market indices
-
 ### Options Data
 - `GET /api/stock/{ticker}/options` - Get options chain data
 
-### Analyst Data
-- `GET /api/stock/{ticker}/analysis/earnings` - Get EPS estimates
-- `GET /api/stock/{ticker}/analysis/revenue` - Get revenue forecasts
-- `GET /api/stock/{ticker}/analysis/recommendations` - Get analyst recommendations
-- `GET /api/stock/{ticker}/analysis/price-targets` - Get price targets
+### Earnings Data
+- `GET /api/stock/{ticker}/earnings_estimate` - Get earnings estimates
 
 ## Query Parameters
 
