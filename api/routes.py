@@ -244,28 +244,36 @@ def get_company_info(ticker):
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_option_chain(ticker):
-    """Get option chains for a given stock"""
+    """Get option chains for a given stock for the next 3 expiration dates"""
     if not validate_ticker(ticker):
         return jsonify(error="Invalid ticker symbol"), 400
 
     try:
         stock = yf.Ticker(ticker)
-        options = stock.option_chain()
-
-        # Replace NaN values with None for JSON serializability
-        calls = options.calls.applymap(lambda x: x if pd.notnull(x) else None)
-        puts = options.puts.applymap(lambda x: x if pd.notnull(x) else None)
-
-        # Convert DataFrame to dictionary with custom NaN replacements
-        call_options = calls.to_dict(orient='records')
-        put_options = puts.to_dict(orient='records')
+        expiration_dates = stock.options[:3]  # Fetch next 3 expiration dates
 
         option_data = {
             'symbol': ticker,
-            'call_options': call_options,
-            'put_options': put_options,
-            'timestamp': datetime.datetime.now().isoformat()
+            'expirations': {}
         }
+
+        for date in expiration_dates:
+            options = stock.option_chain(date)
+            
+            # Replace NaN values with None for JSON serializability
+            calls = options.calls.applymap(lambda x: x if pd.notnull(x) else None)
+            puts = options.puts.applymap(lambda x: x if pd.notnull(x) else None)
+
+            # Convert DataFrame to dictionary with custom NaN replacements
+            call_options = calls.to_dict(orient='records')
+            put_options = puts.to_dict(orient='records')
+
+            option_data['expirations'][date] = {
+                'call_options': call_options,
+                'put_options': put_options
+            }
+
+        option_data['timestamp'] = datetime.datetime.now().isoformat()
 
         return jsonify(option_data)
     except Exception as e:
