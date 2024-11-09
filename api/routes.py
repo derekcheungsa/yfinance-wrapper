@@ -261,21 +261,32 @@ def get_option_chain(ticker):
         return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
 
 
-@api_bp.route('/stock/<ticker>/eps_trend')
+@api_bp.route('/stock/<ticker>/earnings_estimate')
 @rate_limiter.limit
 @cache.cached(timeout=300)
-def get_eps_trend(ticker):
-    """Get EPS trend for a stock"""
+def get_earnings_estimate(ticker):
+    """Get earnings estimate data for a specific ticker"""
     if not validate_ticker(ticker):
         return jsonify(error="Invalid ticker symbol"), 400
 
     try:
         stock = yf.Ticker(ticker)
-        eps_trend = stock.earnings_trend()
+        # Update the attribute access from 'earnings_estimates' to a valid attribute for fetching earnings estimates
+        earnings_estimates = stock.earnings_estimate
 
-        if not eps_trend:
-            return jsonify(error="Could not retrieve EPS trend."), 404
+        if earnings_estimates is not None:
+            # Adding 'Quarter' information to the earnings estimates output
+            earnings_estimates['Quarter'] = earnings_estimates.index.to_list()
 
-        return jsonify({'symbol': ticker, 'eps_trend': eps_trend})
+            data = {
+                'symbol': ticker,
+                'earnings_estimates': earnings_estimates.to_dict(
+                    'records')  # Convert DataFrame to list of records
+            }
+        else:
+            data = {'symbol': ticker, 'earnings_estimates': None}
+
+        return jsonify(data)
     except Exception as e:
-        return jsonify(error=f"Failed to fetch EPS trend: {str(e)}"), 500
+        return jsonify(
+            error=f"Failed to fetch earnings estimate data: {str(e)}"), 500

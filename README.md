@@ -104,5 +104,8 @@ If you find this project helpful and would like to support my work, consider buy
 
 ## Disclaimer
 
+Yahoo!, Y!Finance, and Yahoo! finance are registered trademarks of Yahoo, Inc.
 
-This is not an official Yahoo Finance repository. All data and information provided by this API wrapper are sourced from Yahoo Finance and are subject to their terms of use.
+yfinance is not affiliated, endorsed, or vetted by Yahoo, Inc. It's an open-source tool that uses Yahoo's publicly available APIs, and is intended for research and educational purposes.
+
+You should refer to Yahoo!'s terms of use for details on your rights to use the actual data downloaded. Remember - the Yahoo! finance API is intended for personal use only
