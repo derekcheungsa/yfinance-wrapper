@@ -259,3 +259,23 @@ def get_option_chain(ticker):
         return jsonify(option_data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
+
+
+@api_bp.route('/stock/<ticker>/eps_trend')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_eps_trend(ticker):
+    """Get EPS trend for a stock"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        eps_trend = stock.get_earnings_trend()
+
+        if not eps_trend:
+            return jsonify(error="Could not retrieve EPS trend."), 404
+
+        return jsonify({'symbol': ticker, 'eps_trend': eps_trend})
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch EPS trend: {str(e)}"), 500
