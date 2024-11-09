@@ -132,5 +132,82 @@ def get_stock_history(ticker):
     except Exception as e:
         return jsonify(error=f"Failed to fetch historical data: {str(e)}"), 500
 
+@api_bp.route('/stock/<ticker>/info')
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_company_info(ticker):
+    """Get detailed company information"""
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+    
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Basic company information
+        data = {
+            'symbol': ticker,
+            'company_name': info.get('longName'),
+            'description': info.get('longBusinessSummary'),
+            'industry': info.get('industry'),
+            'sector': info.get('sector'),
+            'website': info.get('website'),
+            
+            # Location and contact
+            'address': {
+                'city': info.get('city'),
+                'state': info.get('state'),
+                'country': info.get('country'),
+                'zip': info.get('zip'),
+                'phone': info.get('phone')
+            },
+            
+            # Financial metrics
+            'financial_metrics': {
+                'market_cap': validate_numeric(info.get('marketCap')),
+                'enterprise_value': validate_numeric(info.get('enterpriseValue')),
+                'trailing_pe': validate_numeric(info.get('trailingPE')),
+                'forward_pe': validate_numeric(info.get('forwardPE')),
+                'profit_margins': validate_numeric(info.get('profitMargins')),
+                'dividend_yield': validate_numeric(info.get('dividendYield')),
+                'beta': validate_numeric(info.get('beta')),
+                'fifty_two_week_high': validate_numeric(info.get('fiftyTwoWeekHigh')),
+                'fifty_two_week_low': validate_numeric(info.get('fiftyTwoWeekLow'))
+            },
+            
+            # Company officers
+            'officers': info.get('companyOfficers', []),
+            
+            # Additional information
+            'employees': info.get('fullTimeEmployees'),
+            'founded_year': info.get('foundedYear'),
+            'exchange': info.get('exchange'),
+            'currency': info.get('currency'),
+            
+            # Data quality indicators
+            'data_quality': {
+                'has_fundamental_data': any(
+                    info.get(key) is not None 
+                    for key in ['trailingPE', 'forwardPE', 'profitMargins']
+                ),
+                'has_detailed_info': all(
+                    info.get(key) is not None 
+                    for key in ['longName', 'sector', 'industry']
+                )
+            }
+        }
+        
+        # Clean up officers data to include only relevant fields
+        if data['officers']:
+            data['officers'] = [{
+                'name': officer.get('name'),
+                'title': officer.get('title'),
+                'year_born': officer.get('yearBorn')
+            } for officer in data['officers']]
+        
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch company information: {str(e)}"), 500
+
 # [Rest of the endpoints remain the same as in the original code]
-# Includes: get_moving_averages, get_rsi, get_statistics, get_company_info, get_market_summary, get_options_chain
+# Includes: get_moving_averages, get_rsi, get_statistics, get_market_summary, get_options_chain
