@@ -36,16 +36,10 @@
                 <a class="nav-link active" data-bs-toggle="tab" href="#stock-data">Stock Data</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#technical">Technical Analysis</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#market">Market Data</a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link" data-bs-toggle="tab" href="#options">Options</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#analyst">Analyst Data</a>
+                <a class="nav-link" data-bs-toggle="tab" href="#earnings">Earnings</a>
             </li>
         </ul>
 
@@ -75,7 +69,13 @@
     "change": 2.45,
     "change_percent": 1.63,
     "volume": 82451234,
-    "market_cap": 2450000000000
+    "market_cap": 2450000000000,
+    "previous_close": 147.78,
+    "timestamp": "2024-11-09T00:00:00",
+    "data_quality": {
+        "price_source": "real_time",
+        "change_calculation": "real_time"
+    }
 }</pre>
                     </div>
 
@@ -123,102 +123,6 @@
                 </div>
             </div>
 
-            <!-- Technical Analysis Tab -->
-            <div class="tab-pane fade" id="technical">
-                <div class="endpoint">
-                    <h3>Get Moving Averages</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/moving-averages</code>
-                    </div>
-                    <p>Returns Simple Moving Average (SMA) and Exponential Moving Average (EMA) calculations.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                        <div class="parameter">
-                            <span class="parameter-name">period</span> (query, optional) - Period for calculation (default: 20)
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/moving-averages')">Try it</button>
-                </div>
-
-                <div class="endpoint">
-                    <h3>Get RSI Analysis</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/rsi</code>
-                    </div>
-                    <p>Returns Relative Strength Index (RSI) calculation.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                        <div class="parameter">
-                            <span class="parameter-name">period</span> (query, optional) - Period for calculation (default: 14)
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/rsi')">Try it</button>
-                </div>
-
-                <div class="endpoint">
-                    <h3>Get Statistical Analysis</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/statistics</code>
-                    </div>
-                    <p>Returns statistical analysis including volatility and returns.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/statistics')">Try it</button>
-                </div>
-            </div>
-
-            <!-- Market Data Tab -->
-            <div class="tab-pane fade" id="market">
-                <div class="endpoint">
-                    <h3>Get Market Summary</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /market/summary</code>
-                    </div>
-                    <p>Returns summary of major market indices.</p>
-
-                    <div class="response-examples mt-3">
-                        <h4>Response Example</h4>
-                        <pre class="bg-dark p-2 rounded">
-{
-    "indices": [
-        {
-            "symbol": "^GSPC",
-            "name": "S&P 500",
-            "price": 4567.89,
-            "change": 23.45,
-            "change_percent": 0.52
-        },
-        {
-            "symbol": "^DJI",
-            "name": "Dow Jones Industrial Average",
-            "price": 35678.90,
-            "change": 123.45,
-            "change_percent": 0.35
-        }
-    ]
-}</pre>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/market/summary')">Try it</button>
-                </div>
-            </div>
-
             <!-- Options Tab -->
             <div class="tab-pane fade" id="options">
                 <div class="endpoint">
@@ -226,15 +130,12 @@
                     <div class="code-block">
                         <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/options</code>
                     </div>
-                    <p>Returns options chain data including calls, puts, and implied volatility.</p>
+                    <p>Returns options chain data including calls and puts.</p>
                     
                     <div class="parameters">
                         <h4>Parameters</h4>
                         <div class="parameter">
                             <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                        <div class="parameter">
-                            <span class="parameter-name">expiration_date</span> (query, optional) - Options expiration date (YYYY-MM-DD)
                         </div>
                     </div>
 
@@ -242,14 +143,14 @@
                 </div>
             </div>
 
-            <!-- Analyst Data Tab -->
-            <div class="tab-pane fade" id="analyst">
+            <!-- Earnings Tab -->
+            <div class="tab-pane fade" id="earnings">
                 <div class="endpoint">
-                    <h3>Get Earnings Data</h3>
+                    <h3>Get Earnings Estimates</h3>
                     <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/earnings</code>
+                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/earnings_estimate</code>
                     </div>
-                    <p>Returns EPS estimates and historical earnings data.</p>
+                    <p>Returns earnings estimate data including quarterly estimates.</p>
                     
                     <div class="parameters">
                         <h4>Parameters</h4>
@@ -258,58 +159,7 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/earnings')">Try it</button>
-                </div>
-
-                <div class="endpoint">
-                    <h3>Get Revenue Forecasts</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/revenue</code>
-                    </div>
-                    <p>Returns revenue forecasts and historical revenue data.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/revenue')">Try it</button>
-                </div>
-
-                <div class="endpoint">
-                    <h3>Get Analyst Recommendations</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/recommendations</code>
-                    </div>
-                    <p>Returns analyst recommendations and ratings.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/recommendations')">Try it</button>
-                </div>
-
-                <div class="endpoint">
-                    <h3>Get Price Targets</h3>
-                    <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/analysis/price-targets</code>
-                    </div>
-                    <p>Returns analyst price targets.</p>
-                    
-                    <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/analysis/price-targets')">Try it</button>
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/earnings_estimate')">Try it</button>
                 </div>
             </div>
         </div>
