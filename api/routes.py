@@ -271,7 +271,7 @@ def get_eps_trend(ticker):
 
     try:
         stock = yf.Ticker(ticker)
-        eps_trend = stock.get_earnings_trend()
+        eps_trend = stock.earnings_trend
 
         if not eps_trend:
             return jsonify(error="Could not retrieve EPS trend."), 404
