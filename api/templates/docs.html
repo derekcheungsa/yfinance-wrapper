@@ -128,18 +128,19 @@
                 <div class="endpoint">
                     <h3>Get Options Chain Data</h3>
                     <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">POST /stock/{ticker}/options</code>
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/options</code>
                     </div>
                     <p>Returns options chain data including calls and puts.</p>
                     
                     <div class="parameters">
-                        <h4>Parameters</h4>
-                        <div class="parameter">
-                            <span class="parameter-name">ticker</span> (path, required) - Stock symbol
-                        </div>
+                        <h4>Request Body (JSON)</h4>
+                        <pre class="bg-dark p-2 rounded">
+{
+    "ticker": "AAPL"  // Required: Stock symbol
+}</pre>
                     </div>
 
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/options', 'POST')">Try it</button>
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/options', 'POST', { ticker: 'AAPL' })">Try it</button>
                 </div>
             </div>
 
