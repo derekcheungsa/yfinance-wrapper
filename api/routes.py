@@ -65,26 +65,19 @@ def get_stock_data(ticker):
 
         # Try primary change calculations
         change = validate_numeric(info.get('regularMarketChange'))
-        change_percent = validate_numeric(
-            info.get('regularMarketChangePercent'))
+        change_percent = validate_numeric(info.get('regularMarketChangePercent'))
 
         # If change values are None, try calculating from current and previous prices
-        if (change is None or change_percent is None
-            ) and current_price is not None and previous_close is not None:
-            change, change_percent = calculate_change_values(
-                current_price, previous_close)
+        if (change is None or change_percent is None) and current_price is not None and previous_close is not None:
+            change, change_percent = calculate_change_values(current_price, previous_close)
 
         # If still None, try alternative fields
         if change is None:
-            change = validate_numeric(
-                info.get('regularMarketPrice')) - validate_numeric(
-                    info.get('regularMarketPreviousClose'))
+            change = validate_numeric(info.get('regularMarketPrice')) - validate_numeric(info.get('regularMarketPreviousClose'))
 
         # If still None, try historical data
-        if (change is None
-                or change_percent is None) and current_price is not None:
-            hist_change, hist_change_percent = get_historical_changes(
-                stock, ticker)
+        if (change is None or change_percent is None) and current_price is not None:
+            hist_change, hist_change_percent = get_historical_changes(stock, ticker)
             change = change if change is not None else hist_change
             change_percent = change_percent if change_percent is not None else hist_change_percent
 
@@ -99,11 +92,8 @@ def get_stock_data(ticker):
             'previous_close': previous_close,
             'timestamp': datetime.datetime.now().isoformat(),
             'data_quality': {
-                'price_source':
-                'real_time' if current_price is not None else 'unavailable',
-                'change_calculation':
-                'real_time' if info.get('regularMarketChange') is not None else
-                'calculated' if change is not None else 'unavailable'
+                'price_source': 'real_time' if current_price is not None else 'unavailable',
+                'change_calculation': 'real_time' if info.get('regularMarketChange') is not None else 'calculated' if change is not None else 'unavailable'
             }
         }
 
@@ -128,23 +118,17 @@ def get_stock_history(ticker):
         history = stock.history(period=period, interval=interval)
 
         data = {
-            'symbol':
-            ticker,
-            'period':
-            period,
-            'interval':
-            interval,
-            'data': [
-                {
-                    'date':
-                    index.strftime("%Y-%m-%d"),  # Change here to format date
-                    'open': validate_numeric(row['Open']),
-                    'high': validate_numeric(row['High']),
-                    'low': validate_numeric(row['Low']),
-                    'close': validate_numeric(row['Close']),
-                    'volume': validate_numeric(row['Volume'])
-                } for index, row in history.iterrows()
-            ]
+            'symbol': ticker,
+            'period': period,
+            'interval': interval,
+            'data': [{
+                'date': index.strftime("%Y-%m-%d"),  # Change here to format date
+                'open': validate_numeric(row['Open']),
+                'high': validate_numeric(row['High']),
+                'low': validate_numeric(row['Low']),
+                'close': validate_numeric(row['Close']),
+                'volume': validate_numeric(row['Volume'])
+            } for index, row in history.iterrows()]
         }
 
         return jsonify(data)
@@ -184,24 +168,15 @@ def get_company_info(ticker):
 
             # Financial metrics
             'financial_metrics': {
-                'market_cap':
-                validate_numeric(info.get('marketCap')),
-                'enterprise_value':
-                validate_numeric(info.get('enterpriseValue')),
-                'trailing_pe':
-                validate_numeric(info.get('trailingPE')),
-                'forward_pe':
-                validate_numeric(info.get('forwardPE')),
-                'profit_margins':
-                validate_numeric(info.get('profitMargins')),
-                'dividend_yield':
-                validate_numeric(info.get('dividendYield')),
-                'beta':
-                validate_numeric(info.get('beta')),
-                'fifty_two_week_high':
-                validate_numeric(info.get('fiftyTwoWeekHigh')),
-                'fifty_two_week_low':
-                validate_numeric(info.get('fiftyTwoWeekLow'))
+                'market_cap': validate_numeric(info.get('marketCap')),
+                'enterprise_value': validate_numeric(info.get('enterpriseValue')),
+                'trailing_pe': validate_numeric(info.get('trailingPE')),
+                'forward_pe': validate_numeric(info.get('forwardPE')),
+                'profit_margins': validate_numeric(info.get('profitMargins')),
+                'dividend_yield': validate_numeric(info.get('dividendYield')),
+                'beta': validate_numeric(info.get('beta')),
+                'fifty_two_week_high': validate_numeric(info.get('fiftyTwoWeekHigh')),
+                'fifty_two_week_low': validate_numeric(info.get('fiftyTwoWeekLow'))
             },
 
             # Company officers
@@ -215,14 +190,8 @@ def get_company_info(ticker):
 
             # Data quality indicators
             'data_quality': {
-                'has_fundamental_data':
-                any(
-                    info.get(key) is not None
-                    for key in ['trailingPE', 'forwardPE', 'profitMargins']),
-                'has_detailed_info':
-                all(
-                    info.get(key) is not None
-                    for key in ['longName', 'sector', 'industry'])
+                'has_fundamental_data': any(info.get(key) is not None for key in ['trailingPE', 'forwardPE', 'profitMargins']),
+                'has_detailed_info': all(info.get(key) is not None for key in ['longName', 'sector', 'industry'])
             }
         }
 
@@ -236,15 +205,27 @@ def get_company_info(ticker):
 
         return jsonify(data)
     except Exception as e:
-        return jsonify(
-            error=f"Failed to fetch company information: {str(e)}"), 500
+        return jsonify(error=f"Failed to fetch company information: {str(e)}"), 500
 
 
-@api_bp.route('/stock/<ticker>/options')
+@api_bp.route('/stock/options', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
-def get_option_chain(ticker):
+def get_option_chain():
     """Get option chains for a given stock for the next 3 expiration dates"""
+    # Validate request body
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    # Validate required fields
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    
+    # Validate ticker
     if not validate_ticker(ticker):
         return jsonify(error="Invalid ticker symbol"), 400
 
@@ -261,8 +242,8 @@ def get_option_chain(ticker):
             options = stock.option_chain(date)
             
             # Replace NaN values with None for JSON serializability
-            calls = options.calls.applymap(lambda x: x if pd.notnull(x) else None)
-            puts = options.puts.applymap(lambda x: x if pd.notnull(x) else None)
+            calls = options.calls.map(lambda x: x if pd.notnull(x) else None)
+            puts = options.puts.map(lambda x: x if pd.notnull(x) else None)
 
             # Convert DataFrame to dictionary with custom NaN replacements
             call_options = calls.to_dict(orient='records')
@@ -279,6 +260,7 @@ def get_option_chain(ticker):
     except Exception as e:
         return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
 
+
 @api_bp.route('/stock/<ticker>/earnings_estimate')
 @rate_limiter.limit
 @cache.cached(timeout=300)
@@ -289,7 +271,6 @@ def get_earnings_estimate(ticker):
 
     try:
         stock = yf.Ticker(ticker)
-        # Update the attribute access from 'earnings_estimates' to a valid attribute for fetching earnings estimates
         earnings_estimates = stock.earnings_estimate
 
         if earnings_estimates is not None:
@@ -298,13 +279,11 @@ def get_earnings_estimate(ticker):
 
             data = {
                 'symbol': ticker,
-                'earnings_estimates': earnings_estimates.to_dict(
-                    'records')  # Convert DataFrame to list of records
+                'earnings_estimates': earnings_estimates.to_dict('records')  # Convert DataFrame to list of records
             }
         else:
             data = {'symbol': ticker, 'earnings_estimates': None}
 
         return jsonify(data)
     except Exception as e:
-        return jsonify(
-            error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
+        return jsonify(error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
