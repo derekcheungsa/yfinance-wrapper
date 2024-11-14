@@ -240,7 +240,7 @@ def get_company_info(ticker):
             error=f"Failed to fetch company information: {str(e)}"), 500
 
 
-@api_bp.route('/stock/<ticker>/options')
+@api_bp.route('/stock/<ticker>/options', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_option_chain(ticker):
@@ -261,8 +261,8 @@ def get_option_chain(ticker):
             options = stock.option_chain(date)
             
             # Replace NaN values with None for JSON serializability
-            calls = options.calls.applymap(lambda x: x if pd.notnull(x) else None)
-            puts = options.puts.applymap(lambda x: x if pd.notnull(x) else None)
+            calls = options.calls.map(lambda x: x if pd.notnull(x) else None)
+            puts = options.puts.map(lambda x: x if pd.notnull(x) else None)
 
             # Convert DataFrame to dictionary with custom NaN replacements
             call_options = calls.to_dict(orient='records')

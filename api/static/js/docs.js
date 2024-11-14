@@ -68,12 +68,23 @@ function handleError(responseElement, error, status) {
 }
 
 // Try an endpoint
-async function tryEndpoint(endpoint) {
+async function tryEndpoint(endpoint, method = 'GET', body = null) {
     const responseElement = document.getElementById('response');
     showLoading(responseElement);
     
     try {
-        const response = await fetch(endpoint);
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        };
+        
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+        
+        const response = await fetch(endpoint, options);
         const data = await response.json();
         
         if (!response.ok) {

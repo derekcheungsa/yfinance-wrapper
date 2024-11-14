@@ -128,7 +128,7 @@
                 <div class="endpoint">
                     <h3>Get Options Chain Data</h3>
                     <div class="code-block">
-                        <code class="d-block bg-dark p-2 rounded">GET /stock/{ticker}/options</code>
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/{ticker}/options</code>
                     </div>
                     <p>Returns options chain data including calls and puts.</p>
                     
@@ -139,7 +139,7 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/options')">Try it</button>
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/options', 'POST')">Try it</button>
                 </div>
             </div>
 

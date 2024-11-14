@@ -37,7 +37,7 @@ The server will start at `http://0.0.0.0:5000`
 - `GET /api/stock/{ticker}/info` - Get company information
 
 ### Options Data
-- `GET /api/stock/{ticker}/options` - Get options chain data
+- `POST /api/stock/{ticker}/options` - Get options chain data
 
 ### Earnings Data
 - `GET /api/stock/{ticker}/earnings_estimate` - Get earnings estimates
@@ -63,6 +63,10 @@ import requests
 # Get current stock data
 response = requests.get('http://localhost:5000/api/stock/AAPL')
 stock_data = response.json()
+
+# Get options data
+response = requests.post('http://localhost:5000/api/stock/AAPL/options')
+options_data = response.json()
 
 # Get historical data with parameters
 params = {'period': '1y', 'interval': '1d'}
