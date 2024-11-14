@@ -3,15 +3,19 @@ import os
 class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'dev')
-    CACHE_TYPE = 'SimpleCache'
+    CACHE_TYPE = 'SimpleCache'  # Using SimpleCache as it's perfect for single worker setup
     CACHE_DEFAULT_TIMEOUT = 300
     CACHE_THRESHOLD = 1000  # Maximum number of items the cache will store
     CACHE_KEY_PREFIX = 'yf_'  # Prefix for all cache keys
+
     JSON_SORT_KEYS = False
     CORS_HEADERS = 'Content-Type'
+    DEBUG = False
+    TESTING = False
 
 class ProductionConfig(Config):
     """Production configuration."""
+
     DEBUG = False
     TESTING = False
     CACHE_TYPE = 'RedisCache'
@@ -25,17 +29,19 @@ class ProductionConfig(Config):
         'max_connections': 20
     }
 
+
 class DevelopmentConfig(Config):
     """Development configuration."""
     DEBUG = True
     TESTING = False
     CACHE_NO_NULL_WARNING = True
 
+
 class TestingConfig(Config):
     """Testing configuration."""
     DEBUG = True
     TESTING = True
-    CACHE_TYPE = 'NullCache'
+    CACHE_TYPE = 'NullCache'  # Disable caching in testing
 
 config = {
     'development': DevelopmentConfig,

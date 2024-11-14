@@ -8,3 +8,4 @@ flask-cors>=5.0.0
 numpy>=2.1.3
 pandas>=2.1.0
 redis
+

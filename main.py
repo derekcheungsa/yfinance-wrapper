@@ -1,6 +1,7 @@
 import os
 from api.app import create_app
 
+
 def main():
     # Get the environment configuration
     env = os.environ.get('FLASK_ENV', 'default')
@@ -17,3 +18,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
