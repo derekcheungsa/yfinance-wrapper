@@ -26,5 +26,3 @@ def create_app(config_name=None):
         return render_template('docs.html')
 
     return app
-
-app = create_app()
