@@ -294,46 +294,46 @@ def get_earnings_estimate(ticker):
         return jsonify(error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
 
 
-@api_bp.route('/stock/analyst_recommendations', methods=['POST'])
-@rate_limiter.limit
-@cache.cached(timeout=300)
-def get_analyst_recommendations():
-    """Get analyst recommendations for a given stock"""
-    if not request.is_json:
-        return jsonify(error="Request must be JSON"), 400
+def calculate_rating_distribution(recommendation_mean, num_analysts):
+    """
+    Calculate rating distribution based on recommendation mean and total analysts.
+    recommendation_mean is on a scale of 1-5 where:
+    1-1.5: Strong Buy
+    1.5-2.5: Buy
+    2.5-3.5: Hold
+    3.5-4.5: Sell
+    4.5-5: Strong Sell
+    """
+    if recommendation_mean is None or num_analysts is None or num_analysts == 0:
+        return None
 
-    request_data = request.get_json()
-    
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
+    # Calculate weights based on distance from recommendation_mean
+    weights = {
+        'strongBuy': max(0, min(1, (1.5 - recommendation_mean) / 0.5)),
+        'buy': max(0, min(1, (2.5 - recommendation_mean) / 1.0 if recommendation_mean >= 1.5 else (recommendation_mean - 1.0) / 0.5)),
+        'hold': max(0, min(1, (3.5 - recommendation_mean) / 1.0 if recommendation_mean >= 2.5 else (recommendation_mean - 1.5) / 1.0)),
+        'sell': max(0, min(1, (4.5 - recommendation_mean) / 1.0 if recommendation_mean >= 3.5 else (recommendation_mean - 2.5) / 1.0)),
+        'strongSell': max(0, min(1, (recommendation_mean - 4.5) / 0.5 if recommendation_mean >= 4.5 else 0))
+    }
 
-    ticker = request_data['ticker']
-    
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
+    # Calculate initial distribution
+    total_weight = sum(weights.values())
+    if total_weight == 0:
+        return None
 
-    try:
-        stock = yf.Ticker(ticker)
-        recommendations = stock.recommendations
-        
-        if recommendations is not None:
-            recommendations = recommendations.fillna(None)
-            data = {
-                'symbol': ticker,
-                'recommendations': recommendations.to_dict('records'),
-                'timestamp': datetime.datetime.now().isoformat()
-            }
-        else:
-            data = {
-                'symbol': ticker,
-                'recommendations': None,
-                'timestamp': datetime.datetime.now().isoformat(),
-                'message': 'No analyst recommendations available for this stock'
-            }
+    distribution = {
+        rating: round(weight * num_analysts / total_weight)
+        for rating, weight in weights.items()
+    }
 
-        return jsonify(data)
-    except Exception as e:
-        return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
+    # Adjust to ensure total equals num_analysts
+    total = sum(distribution.values())
+    if total != num_analysts:
+        # Find the rating with the highest weight and adjust it
+        max_rating = max(weights.items(), key=lambda x: x[1])[0]
+        distribution[max_rating] += (num_analysts - total)
+
+    return distribution
 
 
 @api_bp.route('/stock/analyst_ratings', methods=['POST'])
@@ -361,72 +361,41 @@ def get_analyst_ratings():
         # Debug logging for raw info
         logger.info(f"Raw yfinance info for {ticker}: {info}")
 
-        # Get the number of analyst opinions with a default of 0
-        num_analysts = info.get('numberOfAnalystOpinions', 0)
-        
-        # If there's no analyst coverage, return appropriate message
-        if not num_analysts:
-            logger.warning(f"No analyst coverage available for {ticker}")
+        # Extract key metrics
+        recommendation_mean = validate_numeric(info.get('recommendationMean'))
+        num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
+        recommendation_key = info.get('recommendationKey', 'N/A')
+
+        # Validate essential data
+        if recommendation_mean is None or num_analysts is None or num_analysts == 0:
+            logger.warning(f"Missing essential rating data for {ticker}")
             return jsonify({
                 'symbol': ticker,
-                'message': 'No analyst coverage available for this stock',
+                'message': 'Insufficient analyst coverage data available',
                 'timestamp': datetime.datetime.now().isoformat()
             })
 
-        # Try different possible field names for ratings
-        ratings_mapping = {
-            'strongBuy': ['strongBuy', 'strongBuyCount', 'strongBuyAnalysts'],
-            'buy': ['buy', 'buyCount', 'buyAnalysts'],
-            'hold': ['hold', 'holdCount', 'holdAnalysts'],
-            'sell': ['sell', 'sellCount', 'sellAnalysts'],
-            'strongSell': ['strongSell', 'strongSellCount', 'strongSellAnalysts']
-        }
-
-        # Get recommendation key with validation
-        recommendation_key = info.get('recommendationKey', 'N/A')
-        if not recommendation_key or recommendation_key == 'none':
-            recommendation_key = 'N/A'
-
-        # Function to try multiple field names and get the first non-zero value
-        def get_rating_value(field_names):
-            for field in field_names:
-                value = validate_numeric(info.get(field, 0), 0)
-                if value > 0:
-                    return value
-            return 0
-
-        ratings = {
-            rating_type: get_rating_value(field_names)
-            for rating_type, field_names in ratings_mapping.items()
-        }
-
-        # Log warning if any rating is 0
-        zero_ratings = [rating for rating, value in ratings.items() if value == 0]
-        if zero_ratings:
-            logger.warning(f"Zero values found for ratings {zero_ratings} in {ticker}. Available fields: {list(info.keys())}")
-
-        ratings_data = {
-            'numberOfAnalystOpinions': num_analysts,
-            'recommendationMean': validate_numeric(info.get('recommendationMean')),
-            'recommendationKey': recommendation_key,
-            'ratings': ratings
-        }
-
-        # Validate that we have at least some rating data
-        has_ratings = any(value > 0 for value in ratings_data['ratings'].values())
+        # Calculate rating distribution
+        distribution = calculate_rating_distribution(recommendation_mean, int(num_analysts))
         
-        if not has_ratings:
-            logger.warning(f"No rating details available for {ticker}")
+        if distribution is None:
+            logger.warning(f"Could not calculate rating distribution for {ticker}")
             return jsonify({
                 'symbol': ticker,
-                'message': 'Rating details not available for this stock',
-                'timestamp': datetime.datetime.now().isoformat(),
-                'ratings': ratings_data
+                'message': 'Could not calculate rating distribution',
+                'timestamp': datetime.datetime.now().isoformat()
             })
 
         data = {
             'symbol': ticker,
-            'ratings': ratings_data,
+            'ratings': {
+                'raw': {
+                    'recommendationMean': recommendation_mean,
+                    'numberOfAnalystOpinions': num_analysts,
+                    'recommendationKey': recommendation_key
+                },
+                'distribution': distribution
+            },
             'timestamp': datetime.datetime.now().isoformat()
         }
 
@@ -457,22 +426,108 @@ def get_price_targets():
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
-        price_targets = {
-            'targetHighPrice': validate_numeric(info.get('targetHighPrice')),
-            'targetLowPrice': validate_numeric(info.get('targetLowPrice')),
-            'targetMeanPrice': validate_numeric(info.get('targetMeanPrice')),
-            'targetMedianPrice': validate_numeric(info.get('targetMedianPrice')),
-            'numberOfAnalysts': validate_numeric(info.get('numberOfAnalystOpinions')),
-            'currentPrice': validate_numeric(info.get('currentPrice'))
-        }
+
+        # Extract price targets
+        target_high = validate_numeric(info.get('targetHighPrice'))
+        target_low = validate_numeric(info.get('targetLowPrice'))
+        target_mean = validate_numeric(info.get('targetMeanPrice'))
+        target_median = validate_numeric(info.get('targetMedianPrice'))
+        current_price = validate_numeric(info.get('currentPrice'))
+        num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
+
+        # Check if we have valid price target data
+        if all(x is None for x in [target_high, target_low, target_mean, target_median]):
+            return jsonify({
+                'symbol': ticker,
+                'message': 'No price target data available',
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        # Calculate potential returns if current price is available
+        potential_returns = {}
+        if current_price and current_price > 0:
+            potential_returns = {
+                'highReturn': ((target_high / current_price - 1) * 100) if target_high else None,
+                'lowReturn': ((target_low / current_price - 1) * 100) if target_low else None,
+                'meanReturn': ((target_mean / current_price - 1) * 100) if target_mean else None,
+                'medianReturn': ((target_median / current_price - 1) * 100) if target_median else None
+            }
 
         data = {
             'symbol': ticker,
-            'price_targets': price_targets,
+            'price_targets': {
+                'high': target_high,
+                'low': target_low,
+                'mean': target_mean,
+                'median': target_median,
+                'current_price': current_price,
+                'number_of_analysts': num_analysts,
+                'potential_returns': potential_returns
+            },
             'timestamp': datetime.datetime.now().isoformat()
         }
 
         return jsonify(data)
     except Exception as e:
+        logger.error(f"Error fetching price targets for {ticker}: {str(e)}")
         return jsonify(error=f"Failed to fetch price targets: {str(e)}"), 500
+
+
+@api_bp.route('/stock/analyst_recommendations', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_analyst_recommendations():
+    """Get analyst recommendations for a given stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        recommendations = stock.recommendations
+        
+        if recommendations is not None and not recommendations.empty:
+            # Convert timestamps to ISO format strings
+            recommendations.index = recommendations.index.strftime('%Y-%m-%dT%H:%M:%S')
+            
+            # Handle NaN values
+            recommendations = recommendations.where(pd.notnull(recommendations), None)
+            
+            # Convert DataFrame to records
+            recommendations_list = []
+            for date, row in recommendations.iterrows():
+                recommendation = {
+                    'date': date,
+                    'firm': row.get('Firm'),
+                    'to_grade': row.get('To Grade'),
+                    'from_grade': row.get('From Grade'),
+                    'action': row.get('Action')
+                }
+                recommendations_list.append(recommendation)
+
+            data = {
+                'symbol': ticker,
+                'recommendations': recommendations_list,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        else:
+            data = {
+                'symbol': ticker,
+                'recommendations': None,
+                'message': 'No analyst recommendations history available',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error fetching analyst recommendations for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
