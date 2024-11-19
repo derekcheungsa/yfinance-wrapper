@@ -497,32 +497,23 @@ def get_analyst_recommendations():
         # Get recommendations DataFrame
         recommendations = stock.recommendations
         
-        if recommendations is None or recommendations.empty:
+        if recommendations is not None and not recommendations.empty:
+            try:
+                # Convert DataFrame to records and format dates
+                recommendations_list = recommendations.reset_index().to_dict('records')
+                for rec in recommendations_list:
+                    if isinstance(rec.get('Date'), pd.Timestamp):
+                        rec['Date'] = rec['Date'].isoformat()
+            except Exception as e:
+                logger.error(f"Error formatting recommendations data: {str(e)}")
+                recommendations_list = []
+        else:
             logger.warning(f"No recommendations data available for {ticker}")
-            return jsonify({
-                'symbol': ticker,
-                'message': 'No recommendations data available',
-                'timestamp': datetime.datetime.now().isoformat()
-            })
-
-        # Process recommendations data
-        processed_recommendations = []
-        prev_recommendation = None
-        
-        for index, row in recommendations.iterrows():
-            recommendation_data = {
-                'date': index.isoformat(),
-                'firm': row.get('Firm') if 'Firm' in row else None,
-                'recommendation': row.get('To Grade') if 'To Grade' in row else None,
-                'previous': row.get('From Grade') if 'From Grade' in row else prev_recommendation,
-                'price_target': validate_numeric(row.get('Price Target')) if 'Price Target' in row else None
-            }
-            processed_recommendations.append(recommendation_data)
-            prev_recommendation = recommendation_data['recommendation']
+            recommendations_list = []
 
         data = {
             'symbol': ticker,
-            'recommendations': processed_recommendations,
+            'recommendations': recommendations_list,
             'timestamp': datetime.datetime.now().isoformat()
         }
 
