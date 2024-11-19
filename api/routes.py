@@ -427,6 +427,9 @@ def get_price_targets():
         stock = yf.Ticker(ticker)
         info = stock.info
 
+        # Debug logging for raw info
+        logger.info(f"Raw yfinance info for {ticker}: {info}")
+
         # Extract price targets
         target_high = validate_numeric(info.get('targetHighPrice'))
         target_low = validate_numeric(info.get('targetLowPrice'))
@@ -435,24 +438,30 @@ def get_price_targets():
         current_price = validate_numeric(info.get('currentPrice'))
         num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
 
+        # Log warning if any price target is missing
+        missing_targets = []
+        if target_high is None:
+            missing_targets.append('high')
+        if target_low is None:
+            missing_targets.append('low')
+        if target_mean is None:
+            missing_targets.append('mean')
+        if target_median is None:
+            missing_targets.append('median')
+        
+        if missing_targets:
+            logger.warning(f"Missing price targets for {ticker}: {', '.join(missing_targets)}")
+
         # Check if we have valid price target data
         if all(x is None for x in [target_high, target_low, target_mean, target_median]):
+            logger.error(f"No price target data available for {ticker}")
             return jsonify({
                 'symbol': ticker,
                 'message': 'No price target data available',
                 'timestamp': datetime.datetime.now().isoformat()
             })
 
-        # Calculate potential returns if current price is available
-        potential_returns = {}
-        if current_price and current_price > 0:
-            potential_returns = {
-                'highReturn': ((target_high / current_price - 1) * 100) if target_high else None,
-                'lowReturn': ((target_low / current_price - 1) * 100) if target_low else None,
-                'meanReturn': ((target_mean / current_price - 1) * 100) if target_mean else None,
-                'medianReturn': ((target_median / current_price - 1) * 100) if target_median else None
-            }
-
+        # Prepare response data
         data = {
             'symbol': ticker,
             'price_targets': {
@@ -461,8 +470,12 @@ def get_price_targets():
                 'mean': target_mean,
                 'median': target_median,
                 'current_price': current_price,
-                'number_of_analysts': num_analysts,
-                'potential_returns': potential_returns
+                'number_of_analysts': num_analysts
+            },
+            'data_quality': {
+                'missing_targets': missing_targets if missing_targets else None,
+                'has_current_price': current_price is not None,
+                'has_analyst_count': num_analysts is not None
             },
             'timestamp': datetime.datetime.now().isoformat()
         }
