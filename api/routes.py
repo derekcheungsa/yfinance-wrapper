@@ -322,7 +322,8 @@ def get_analyst_recommendations():
             data = {
                 'symbol': ticker,
                 'recommendations': None,
-                'timestamp': datetime.datetime.now().isoformat()
+                'timestamp': datetime.datetime.now().isoformat(),
+                'message': 'No analyst recommendations available for this stock'
             }
 
         return jsonify(data)
@@ -351,19 +352,46 @@ def get_analyst_ratings():
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
+
+        # Get the number of analyst opinions with a default of 0
+        num_analysts = info.get('numberOfAnalystOpinions', 0)
         
+        # If there's no analyst coverage, return appropriate message
+        if not num_analysts:
+            return jsonify({
+                'symbol': ticker,
+                'message': 'No analyst coverage available for this stock',
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        # Get recommendation key with validation
+        recommendation_key = info.get('recommendationKey', 'N/A')
+        if not recommendation_key or recommendation_key == 'none':
+            recommendation_key = 'N/A'
+
         ratings_data = {
-            'numberOfAnalystOpinions': info.get('numberOfAnalystOpinions'),
+            'numberOfAnalystOpinions': num_analysts,
             'recommendationMean': validate_numeric(info.get('recommendationMean')),
-            'recommendationKey': info.get('recommendationKey'),
+            'recommendationKey': recommendation_key,
             'ratings': {
-                'strongBuy': validate_numeric(info.get('strongBuy')),
-                'buy': validate_numeric(info.get('buy')),
-                'hold': validate_numeric(info.get('hold')),
-                'sell': validate_numeric(info.get('sell')),
-                'strongSell': validate_numeric(info.get('strongSell'))
+                'strongBuy': validate_numeric(info.get('strongBuy', 0), 0),
+                'buy': validate_numeric(info.get('buy', 0), 0),
+                'hold': validate_numeric(info.get('hold', 0), 0),
+                'sell': validate_numeric(info.get('sell', 0), 0),
+                'strongSell': validate_numeric(info.get('strongSell', 0), 0)
             }
         }
+
+        # Validate that we have at least some rating data
+        has_ratings = any(value > 0 for value in ratings_data['ratings'].values())
+        
+        if not has_ratings:
+            return jsonify({
+                'symbol': ticker,
+                'message': 'Rating details not available for this stock',
+                'timestamp': datetime.datetime.now().isoformat(),
+                'ratings': ratings_data
+            })
 
         data = {
             'symbol': ticker,
