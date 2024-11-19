@@ -26,6 +26,25 @@ def validate_numeric(value, fallback=None):
         return fallback
 
 
+def format_date_index(index):
+    """Format date index handling both datetime and integer types"""
+    try:
+        if isinstance(index, (pd.Timestamp, datetime.datetime)):
+            return index.strftime('%Y-%m-%d')
+        elif isinstance(index, (int, np.int64)):
+            # Convert integer to date assuming it's a Unix timestamp
+            return datetime.datetime.fromtimestamp(index).strftime('%Y-%m-%d')
+        elif isinstance(index, str):
+            # If it's already a string, try to parse and format it
+            return pd.to_datetime(index).strftime('%Y-%m-%d')
+        else:
+            logger.warning(f"Unexpected index type: {type(index)}")
+            return str(index)
+    except Exception as e:
+        logger.warning(f"Error formatting date index: {str(e)}")
+        return str(index)
+
+
 def calculate_change_values(current_price, previous_close):
     """Calculate change and change percentage from current and previous prices"""
     if current_price is None or previous_close is None or previous_close == 0:
@@ -336,7 +355,8 @@ def get_analyst_recommendations():
                     record[column] = value.item()  # Convert numpy types to native Python types
                 else:
                     record[column] = value
-            record['date'] = index.strftime('%Y-%m-%d')  # Convert index date to string
+            # Use the new format_date_index function for date handling
+            record['date'] = format_date_index(index)
             recommendations_records.append(record)
 
         data = {
