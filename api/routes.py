@@ -287,3 +287,132 @@ def get_earnings_estimate(ticker):
         return jsonify(data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
+
+
+@api_bp.route('/stock/analyst_recommendations', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_analyst_recommendations():
+    """Get analyst recommendations for a given stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        recommendations = stock.recommendations
+        
+        if recommendations is not None:
+            recommendations = recommendations.fillna(None)
+            data = {
+                'symbol': ticker,
+                'recommendations': recommendations.to_dict('records'),
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        else:
+            data = {
+                'symbol': ticker,
+                'recommendations': None,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
+
+
+@api_bp.route('/stock/analyst_ratings', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_analyst_ratings():
+    """Get analyst ratings summary for a given stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        ratings_data = {
+            'numberOfAnalystOpinions': info.get('numberOfAnalystOpinions'),
+            'recommendationMean': validate_numeric(info.get('recommendationMean')),
+            'recommendationKey': info.get('recommendationKey'),
+            'ratings': {
+                'strongBuy': validate_numeric(info.get('strongBuy')),
+                'buy': validate_numeric(info.get('buy')),
+                'hold': validate_numeric(info.get('hold')),
+                'sell': validate_numeric(info.get('sell')),
+                'strongSell': validate_numeric(info.get('strongSell'))
+            }
+        }
+
+        data = {
+            'symbol': ticker,
+            'ratings': ratings_data,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch analyst ratings: {str(e)}"), 500
+
+
+@api_bp.route('/stock/price_targets', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_price_targets():
+    """Get analyst price targets for a given stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        price_targets = {
+            'targetHighPrice': validate_numeric(info.get('targetHighPrice')),
+            'targetLowPrice': validate_numeric(info.get('targetLowPrice')),
+            'targetMeanPrice': validate_numeric(info.get('targetMeanPrice')),
+            'targetMedianPrice': validate_numeric(info.get('targetMedianPrice')),
+            'numberOfAnalysts': validate_numeric(info.get('numberOfAnalystOpinions')),
+            'currentPrice': validate_numeric(info.get('currentPrice'))
+        }
+
+        data = {
+            'symbol': ticker,
+            'price_targets': price_targets,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(error=f"Failed to fetch price targets: {str(e)}"), 500
