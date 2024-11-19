@@ -448,20 +448,9 @@ def get_price_targets():
             missing_targets.append('mean')
         if target_median is None:
             missing_targets.append('median')
-        
-        if missing_targets:
+        if len(missing_targets) > 0:
             logger.warning(f"Missing price targets for {ticker}: {', '.join(missing_targets)}")
 
-        # Check if we have valid price target data
-        if all(x is None for x in [target_high, target_low, target_mean, target_median]):
-            logger.error(f"No price target data available for {ticker}")
-            return jsonify({
-                'symbol': ticker,
-                'message': 'No price target data available',
-                'timestamp': datetime.datetime.now().isoformat()
-            })
-
-        # Prepare response data
         data = {
             'symbol': ticker,
             'price_targets': {
@@ -471,11 +460,6 @@ def get_price_targets():
                 'median': target_median,
                 'current_price': current_price,
                 'number_of_analysts': num_analysts
-            },
-            'data_quality': {
-                'missing_targets': missing_targets if missing_targets else None,
-                'has_current_price': current_price is not None,
-                'has_analyst_count': num_analysts is not None
             },
             'timestamp': datetime.datetime.now().isoformat()
         }
@@ -490,7 +474,7 @@ def get_price_targets():
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_analyst_recommendations():
-    """Get analyst recommendations for a given stock"""
+    """Get analyst recommendations history for a given stock"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
@@ -506,39 +490,41 @@ def get_analyst_recommendations():
 
     try:
         stock = yf.Ticker(ticker)
+        
+        # Debug logging
+        logger.info(f"Fetching recommendations for {ticker}")
+        
+        # Get recommendations DataFrame
         recommendations = stock.recommendations
         
-        if recommendations is not None and not recommendations.empty:
-            # Convert timestamps to ISO format strings
-            recommendations.index = recommendations.index.strftime('%Y-%m-%dT%H:%M:%S')
-            
-            # Handle NaN values
-            recommendations = recommendations.where(pd.notnull(recommendations), None)
-            
-            # Convert DataFrame to records
-            recommendations_list = []
-            for date, row in recommendations.iterrows():
-                recommendation = {
-                    'date': date,
-                    'firm': row.get('Firm'),
-                    'to_grade': row.get('To Grade'),
-                    'from_grade': row.get('From Grade'),
-                    'action': row.get('Action')
-                }
-                recommendations_list.append(recommendation)
+        if recommendations is None or recommendations.empty:
+            logger.warning(f"No recommendations data available for {ticker}")
+            return jsonify({
+                'symbol': ticker,
+                'message': 'No recommendations data available',
+                'timestamp': datetime.datetime.now().isoformat()
+            })
 
-            data = {
-                'symbol': ticker,
-                'recommendations': recommendations_list,
-                'timestamp': datetime.datetime.now().isoformat()
+        # Process recommendations data
+        processed_recommendations = []
+        prev_recommendation = None
+        
+        for index, row in recommendations.iterrows():
+            recommendation_data = {
+                'date': index.isoformat(),
+                'firm': row.get('Firm') if 'Firm' in row else None,
+                'recommendation': row.get('To Grade') if 'To Grade' in row else None,
+                'previous': row.get('From Grade') if 'From Grade' in row else prev_recommendation,
+                'price_target': validate_numeric(row.get('Price Target')) if 'Price Target' in row else None
             }
-        else:
-            data = {
-                'symbol': ticker,
-                'recommendations': None,
-                'message': 'No analyst recommendations history available',
-                'timestamp': datetime.datetime.now().isoformat()
-            }
+            processed_recommendations.append(recommendation_data)
+            prev_recommendation = recommendation_data['recommendation']
+
+        data = {
+            'symbol': ticker,
+            'recommendations': processed_recommendations,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
 
         return jsonify(data)
     except Exception as e:
