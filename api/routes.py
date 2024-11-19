@@ -6,6 +6,7 @@ import datetime
 import pandas as pd
 import numpy as np
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -336,188 +337,185 @@ def calculate_rating_distribution(recommendation_mean, num_analysts):
     return distribution
 
 
+def validate_tickers(tickers):
+    """Validate and sanitize a list of tickers"""
+    if not isinstance(tickers, list):
+        return False
+    
+    if len(tickers) > 10:
+        return False
+    
+    return all(validate_ticker(ticker) for ticker in tickers)
+
+def process_tickers_parallel(tickers, func):
+    """Process a list of tickers in parallel using a thread pool"""
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(func, tickers))
+    return results
+
+
 @api_bp.route('/stock/analyst_ratings', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_analyst_ratings():
-    """Get analyst ratings summary for a given stock"""
+    """Get analyst ratings summary for given stocks"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
     
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
 
-    ticker = request_data['ticker']
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
     
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
 
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
 
-        # Debug logging for raw info
-        logger.info(f"Raw yfinance info for {ticker}: {info}")
+            # Extract key metrics
+            recommendation_mean = validate_numeric(info.get('recommendationMean'))
+            num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
+            recommendation_key = info.get('recommendationKey', 'N/A')
 
-        # Extract key metrics
-        recommendation_mean = validate_numeric(info.get('recommendationMean'))
-        num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
-        recommendation_key = info.get('recommendationKey', 'N/A')
+            # Validate essential data
+            if recommendation_mean is None or num_analysts is None or num_analysts == 0:
+                return {
+                    'message': 'Insufficient analyst coverage data available',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
 
-        # Validate essential data
-        if recommendation_mean is None or num_analysts is None or num_analysts == 0:
-            logger.warning(f"Missing essential rating data for {ticker}")
-            return jsonify({
-                'symbol': ticker,
-                'message': 'Insufficient analyst coverage data available',
-                'timestamp': datetime.datetime.now().isoformat()
-            })
+            # Calculate rating distribution
+            distribution = calculate_rating_distribution(recommendation_mean, int(num_analysts))
+            
+            if distribution is None:
+                return {
+                    'message': 'Could not calculate rating distribution',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
 
-        # Calculate rating distribution
-        distribution = calculate_rating_distribution(recommendation_mean, int(num_analysts))
-        
-        if distribution is None:
-            logger.warning(f"Could not calculate rating distribution for {ticker}")
-            return jsonify({
-                'symbol': ticker,
-                'message': 'Could not calculate rating distribution',
-                'timestamp': datetime.datetime.now().isoformat()
-            })
-
-        data = {
-            'symbol': ticker,
-            'ratings': {
-                'raw': {
-                    'recommendationMean': recommendation_mean,
-                    'numberOfAnalystOpinions': num_analysts,
-                    'recommendationKey': recommendation_key
+            return {
+                'ratings': {
+                    'raw': {
+                        'recommendationMean': recommendation_mean,
+                        'numberOfAnalystOpinions': num_analysts,
+                        'recommendationKey': recommendation_key
+                    },
+                    'distribution': distribution
                 },
-                'distribution': distribution
-            },
-            'timestamp': datetime.datetime.now().isoformat()
-        }
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error fetching analyst ratings for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch analyst ratings: {str(e)}"}
 
-        return jsonify(data)
-    except Exception as e:
-        logger.error(f"Error fetching analyst ratings for {ticker}: {str(e)}")
-        return jsonify(error=f"Failed to fetch analyst ratings: {str(e)}"), 500
-
+    results = process_tickers_parallel(tickers, process_single_ticker)
+    return jsonify(results)
 
 @api_bp.route('/stock/price_targets', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_price_targets():
-    """Get analyst price targets for a given stock"""
+    """Get analyst price targets for given stocks"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
     
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
 
-    ticker = request_data['ticker']
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
     
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
 
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
 
-        # Debug logging for raw info
-        logger.info(f"Raw yfinance info for {ticker}: {info}")
+            # Extract price targets
+            data = {
+                'price_targets': {
+                    'high': validate_numeric(info.get('targetHighPrice')),
+                    'low': validate_numeric(info.get('targetLowPrice')),
+                    'mean': validate_numeric(info.get('targetMeanPrice')),
+                    'median': validate_numeric(info.get('targetMedianPrice')),
+                    'current_price': validate_numeric(info.get('currentPrice')),
+                    'number_of_analysts': validate_numeric(info.get('numberOfAnalystOpinions'))
+                },
+                'timestamp': datetime.datetime.now().isoformat()
+            }
 
-        # Extract price targets
-        target_high = validate_numeric(info.get('targetHighPrice'))
-        target_low = validate_numeric(info.get('targetLowPrice'))
-        target_mean = validate_numeric(info.get('targetMeanPrice'))
-        target_median = validate_numeric(info.get('targetMedianPrice'))
-        current_price = validate_numeric(info.get('currentPrice'))
-        num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
+            # Calculate percentage differences from current price
+            if data['price_targets']['current_price']:
+                current_price = data['price_targets']['current_price']
+                for target_type in ['high', 'low', 'mean', 'median']:
+                    target_price = data['price_targets'][target_type]
+                    if target_price:
+                        data['price_targets'][f'{target_type}_pct_diff'] = \
+                            ((target_price - current_price) / current_price) * 100
 
-        # Log warning if any price target is missing
-        missing_targets = []
-        if target_high is None:
-            missing_targets.append('high')
-        if target_low is None:
-            missing_targets.append('low')
-        if target_mean is None:
-            missing_targets.append('mean')
-        if target_median is None:
-            missing_targets.append('median')
-        if len(missing_targets) > 0:
-            logger.warning(f"Missing price targets for {ticker}: {', '.join(missing_targets)}")
+            return data
+        except Exception as e:
+            logger.error(f"Error fetching price targets for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch price targets: {str(e)}"}
 
-        data = {
-            'symbol': ticker,
-            'price_targets': {
-                'high': target_high,
-                'low': target_low,
-                'mean': target_mean,
-                'median': target_median,
-                'current_price': current_price,
-                'number_of_analysts': num_analysts
-            },
-            'timestamp': datetime.datetime.now().isoformat()
-        }
-
-        return jsonify(data)
-    except Exception as e:
-        logger.error(f"Error fetching price targets for {ticker}: {str(e)}")
-        return jsonify(error=f"Failed to fetch price targets: {str(e)}"), 500
-
+    results = process_tickers_parallel(tickers, process_single_ticker)
+    return jsonify(results)
 
 @api_bp.route('/stock/analyst_recommendations', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_analyst_recommendations():
-    """Get analyst recommendations history for a given stock"""
+    """Get analyst recommendations for given stocks"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
     
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
 
-    ticker = request_data['ticker']
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
     
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
 
-    try:
-        stock = yf.Ticker(ticker)
-        
-        # Debug logging
-        logger.info(f"Fetching recommendations for {ticker}")
-        
-        # Get recommendations DataFrame
-        recommendations = stock.recommendations
-        
-        if recommendations is not None and not recommendations.empty:
-            try:
-                # Convert DataFrame to records and format dates
-                recommendations_list = recommendations.reset_index().to_dict('records')
-                for rec in recommendations_list:
-                    if isinstance(rec.get('Date'), pd.Timestamp):
-                        rec['Date'] = rec['Date'].isoformat()
-            except Exception as e:
-                logger.error(f"Error formatting recommendations data: {str(e)}")
-                recommendations_list = []
-        else:
-            logger.warning(f"No recommendations data available for {ticker}")
-            recommendations_list = []
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            recommendations = stock.recommendations
+            
+            if recommendations is None:
+                return {
+                    'message': 'No recommendations data available',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
 
-        data = {
-            'symbol': ticker,
-            'recommendations': recommendations_list,
-            'timestamp': datetime.datetime.now().isoformat()
-        }
+            # Convert recommendations DataFrame to records
+            recommendations_data = recommendations.tail(10).to_dict('records')
+            
+            # Convert timestamps to ISO format strings
+            for rec in recommendations_data:
+                if 'Date' in rec:
+                    rec['Date'] = rec['Date'].isoformat()
 
-        return jsonify(data)
-    except Exception as e:
-        logger.error(f"Error fetching analyst recommendations for {ticker}: {str(e)}")
-        return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
+            return {
+                'recommendations': recommendations_data,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error fetching recommendations for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch recommendations: {str(e)}"}
+
+    results = {ticker: process_single_ticker(ticker) for ticker in tickers}
+    return jsonify(results)
