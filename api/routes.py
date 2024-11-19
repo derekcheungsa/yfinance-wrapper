@@ -27,22 +27,51 @@ def validate_numeric(value, fallback=None):
 
 
 def format_date_index(index):
-    """Format date index handling both datetime and integer types"""
+    """Format date index handling multiple date formats from yfinance"""
     try:
-        if isinstance(index, (pd.Timestamp, datetime.datetime)):
+        # Handle numpy datetime64
+        if isinstance(index, np.datetime64):
+            return pd.Timestamp(index).strftime('%Y-%m-%d')
+        
+        # Handle pandas Timestamp
+        if isinstance(index, pd.Timestamp):
             return index.strftime('%Y-%m-%d')
-        elif isinstance(index, (int, np.int64)):
-            # Convert integer to date assuming it's a Unix timestamp
-            return datetime.datetime.fromtimestamp(index).strftime('%Y-%m-%d')
-        elif isinstance(index, str):
-            # If it's already a string, try to parse and format it
-            return pd.to_datetime(index).strftime('%Y-%m-%d')
-        else:
-            logger.warning(f"Unexpected index type: {type(index)}")
-            return str(index)
+        
+        # Handle Python datetime
+        if isinstance(index, datetime.datetime):
+            return index.strftime('%Y-%m-%d')
+        
+        # Handle Unix timestamps (both int and float)
+        if isinstance(index, (int, float, np.int64, np.float64)):
+            try:
+                # Convert to Timestamp using seconds
+                ts = pd.Timestamp(index, unit='s')
+                # Verify the timestamp is reasonable (between 1970 and 2100)
+                if pd.Timestamp('1970-01-01') <= ts <= pd.Timestamp('2100-01-01'):
+                    return ts.strftime('%Y-%m-%d')
+                # If timestamp is unreasonable, try milliseconds
+                ts = pd.Timestamp(index, unit='ms')
+                if pd.Timestamp('1970-01-01') <= ts <= pd.Timestamp('2100-01-01'):
+                    return ts.strftime('%Y-%m-%d')
+                raise ValueError("Timestamp out of reasonable range")
+            except Exception as e:
+                logger.warning(f"Failed to convert numeric timestamp {index}: {str(e)}")
+                return None
+        
+        # Handle string dates
+        if isinstance(index, str):
+            try:
+                return pd.to_datetime(index).strftime('%Y-%m-%d')
+            except Exception as e:
+                logger.warning(f"Failed to parse date string {index}: {str(e)}")
+                return None
+        
+        logger.warning(f"Unsupported date index type: {type(index)}")
+        return None
+        
     except Exception as e:
-        logger.warning(f"Error formatting date index: {str(e)}")
-        return str(index)
+        logger.error(f"Error formatting date index: {str(e)}", exc_info=True)
+        return None
 
 
 def calculate_change_values(current_price, previous_close):
@@ -146,7 +175,7 @@ def get_stock_history(ticker):
             'period': period,
             'interval': interval,
             'data': [{
-                'date': index.strftime("%Y-%m-%d"),  # Change here to format date
+                'date': format_date_index(index),  # Use the new format_date_index function for date handling
                 'open': validate_numeric(row['Open']),
                 'high': validate_numeric(row['High']),
                 'low': validate_numeric(row['Low']),
