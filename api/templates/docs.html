@@ -41,6 +41,9 @@
             <li class="nav-item">
                 <a class="nav-link" data-bs-toggle="tab" href="#earnings">Earnings</a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#analyst">Analyst Data</a>
+            </li>
         </ul>
 
         <div class="tab-content">
@@ -161,6 +164,63 @@
                     </div>
 
                     <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/AAPL/earnings_estimate')">Try it</button>
+                </div>
+            </div>
+
+            <!-- Analyst Data Tab -->
+            <div class="tab-pane fade" id="analyst">
+                <div class="endpoint">
+                    <h3>Get Analyst Recommendations</h3>
+                    <div class="code-block">
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/analyst_recommendations</code>
+                    </div>
+                    <p>Returns analyst recommendations history for a given stock.</p>
+                    
+                    <div class="parameters">
+                        <h4>Request Body (JSON)</h4>
+                        <pre class="bg-dark p-2 rounded">
+{
+    "ticker": "AAPL"  // Required: Stock symbol
+}</pre>
+                    </div>
+
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/analyst_recommendations', 'POST', { ticker: 'AAPL' })">Try it</button>
+                </div>
+
+                <div class="endpoint">
+                    <h3>Get Analyst Ratings</h3>
+                    <div class="code-block">
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/analyst_ratings</code>
+                    </div>
+                    <p>Returns current analyst ratings summary including buy/sell/hold recommendations.</p>
+                    
+                    <div class="parameters">
+                        <h4>Request Body (JSON)</h4>
+                        <pre class="bg-dark p-2 rounded">
+{
+    "ticker": "AAPL"  // Required: Stock symbol
+}</pre>
+                    </div>
+
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/analyst_ratings', 'POST', { ticker: 'AAPL' })">Try it</button>
+                </div>
+
+                <div class="endpoint">
+                    <h3>Get Price Targets</h3>
+                    <div class="code-block">
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/price_targets</code>
+                    </div>
+                    <p>Returns analyst price targets including high, low, mean, and median targets.</p>
+                    
+                    <div class="parameters">
+                        <h4>Request Body (JSON)</h4>
+                        <pre class="bg-dark p-2 rounded">
+{
+    "ticker": "AAPL"  // Required: Stock symbol
+}</pre>
+                    </div>
+
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/price_targets', 'POST', { ticker: 'AAPL' })">Try it</button>
                 </div>
             </div>
         </div>
