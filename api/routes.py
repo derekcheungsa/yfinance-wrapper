@@ -5,6 +5,11 @@ from .utils import validate_ticker, RateLimiter
 import datetime
 import pandas as pd
 import numpy as np
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
 api_bp = Blueprint('api', __name__)
@@ -311,22 +316,38 @@ def get_analyst_recommendations():
         stock = yf.Ticker(ticker)
         recommendations = stock.recommendations
         
-        if recommendations is not None:
-            recommendations = recommendations.fillna(None)
-            data = {
-                'symbol': ticker,
-                'recommendations': recommendations.to_dict('records'),
-                'timestamp': datetime.datetime.now().isoformat()
-            }
-        else:
-            data = {
+        if recommendations is None:
+            logger.info(f"No recommendations data available for {ticker}")
+            return jsonify({
                 'symbol': ticker,
                 'recommendations': None,
                 'timestamp': datetime.datetime.now().isoformat()
-            }
+            })
+
+        # Convert DataFrame to records, handling NaN values
+        recommendations_records = []
+        for index, row in recommendations.iterrows():
+            record = {}
+            for column in recommendations.columns:
+                value = row[column]
+                if pd.isna(value):
+                    record[column] = None
+                elif isinstance(value, (np.int64, np.float64)):
+                    record[column] = value.item()  # Convert numpy types to native Python types
+                else:
+                    record[column] = value
+            record['date'] = index.strftime('%Y-%m-%d')  # Convert index date to string
+            recommendations_records.append(record)
+
+        data = {
+            'symbol': ticker,
+            'recommendations': recommendations_records,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
 
         return jsonify(data)
     except Exception as e:
+        logger.error(f"Error fetching recommendations for {ticker}: {str(e)}", exc_info=True)
         return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
 
 
