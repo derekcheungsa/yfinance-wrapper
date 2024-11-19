@@ -5,6 +5,11 @@ from .utils import validate_ticker, RateLimiter
 import datetime
 import pandas as pd
 import numpy as np
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
 api_bp = Blueprint('api', __name__)
@@ -353,39 +358,65 @@ def get_analyst_ratings():
         stock = yf.Ticker(ticker)
         info = stock.info
 
+        # Debug logging for raw info
+        logger.info(f"Raw yfinance info for {ticker}: {info}")
+
         # Get the number of analyst opinions with a default of 0
         num_analysts = info.get('numberOfAnalystOpinions', 0)
         
         # If there's no analyst coverage, return appropriate message
         if not num_analysts:
+            logger.warning(f"No analyst coverage available for {ticker}")
             return jsonify({
                 'symbol': ticker,
                 'message': 'No analyst coverage available for this stock',
                 'timestamp': datetime.datetime.now().isoformat()
             })
 
+        # Try different possible field names for ratings
+        ratings_mapping = {
+            'strongBuy': ['strongBuy', 'strongBuyCount', 'strongBuyAnalysts'],
+            'buy': ['buy', 'buyCount', 'buyAnalysts'],
+            'hold': ['hold', 'holdCount', 'holdAnalysts'],
+            'sell': ['sell', 'sellCount', 'sellAnalysts'],
+            'strongSell': ['strongSell', 'strongSellCount', 'strongSellAnalysts']
+        }
+
         # Get recommendation key with validation
         recommendation_key = info.get('recommendationKey', 'N/A')
         if not recommendation_key or recommendation_key == 'none':
             recommendation_key = 'N/A'
 
+        # Function to try multiple field names and get the first non-zero value
+        def get_rating_value(field_names):
+            for field in field_names:
+                value = validate_numeric(info.get(field, 0), 0)
+                if value > 0:
+                    return value
+            return 0
+
+        ratings = {
+            rating_type: get_rating_value(field_names)
+            for rating_type, field_names in ratings_mapping.items()
+        }
+
+        # Log warning if any rating is 0
+        zero_ratings = [rating for rating, value in ratings.items() if value == 0]
+        if zero_ratings:
+            logger.warning(f"Zero values found for ratings {zero_ratings} in {ticker}. Available fields: {list(info.keys())}")
+
         ratings_data = {
             'numberOfAnalystOpinions': num_analysts,
             'recommendationMean': validate_numeric(info.get('recommendationMean')),
             'recommendationKey': recommendation_key,
-            'ratings': {
-                'strongBuy': validate_numeric(info.get('strongBuy', 0), 0),
-                'buy': validate_numeric(info.get('buy', 0), 0),
-                'hold': validate_numeric(info.get('hold', 0), 0),
-                'sell': validate_numeric(info.get('sell', 0), 0),
-                'strongSell': validate_numeric(info.get('strongSell', 0), 0)
-            }
+            'ratings': ratings
         }
 
         # Validate that we have at least some rating data
         has_ratings = any(value > 0 for value in ratings_data['ratings'].values())
         
         if not has_ratings:
+            logger.warning(f"No rating details available for {ticker}")
             return jsonify({
                 'symbol': ticker,
                 'message': 'Rating details not available for this stock',
@@ -401,6 +432,7 @@ def get_analyst_ratings():
 
         return jsonify(data)
     except Exception as e:
+        logger.error(f"Error fetching analyst ratings for {ticker}: {str(e)}")
         return jsonify(error=f"Failed to fetch analyst ratings: {str(e)}"), 500
 
 
