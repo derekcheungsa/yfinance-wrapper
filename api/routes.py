@@ -5,11 +5,6 @@ from .utils import validate_ticker, RateLimiter
 import datetime
 import pandas as pd
 import numpy as np
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
 api_bp = Blueprint('api', __name__)
@@ -24,54 +19,6 @@ def validate_numeric(value, fallback=None):
         return fallback
     except (ValueError, TypeError):
         return fallback
-
-
-def format_date_index(index):
-    """Format date index handling multiple date formats from yfinance"""
-    try:
-        # Handle numpy datetime64
-        if isinstance(index, np.datetime64):
-            return pd.Timestamp(index).strftime('%Y-%m-%d')
-        
-        # Handle pandas Timestamp
-        if isinstance(index, pd.Timestamp):
-            return index.strftime('%Y-%m-%d')
-        
-        # Handle Python datetime
-        if isinstance(index, datetime.datetime):
-            return index.strftime('%Y-%m-%d')
-        
-        # Handle Unix timestamps (both int and float)
-        if isinstance(index, (int, float, np.int64, np.float64)):
-            try:
-                # Convert to Timestamp using seconds
-                ts = pd.Timestamp(index, unit='s')
-                # Verify the timestamp is reasonable (between 1970 and 2100)
-                if pd.Timestamp('1970-01-01') <= ts <= pd.Timestamp('2100-01-01'):
-                    return ts.strftime('%Y-%m-%d')
-                # If timestamp is unreasonable, try milliseconds
-                ts = pd.Timestamp(index, unit='ms')
-                if pd.Timestamp('1970-01-01') <= ts <= pd.Timestamp('2100-01-01'):
-                    return ts.strftime('%Y-%m-%d')
-                raise ValueError("Timestamp out of reasonable range")
-            except Exception as e:
-                logger.warning(f"Failed to convert numeric timestamp {index}: {str(e)}")
-                return None
-        
-        # Handle string dates
-        if isinstance(index, str):
-            try:
-                return pd.to_datetime(index).strftime('%Y-%m-%d')
-            except Exception as e:
-                logger.warning(f"Failed to parse date string {index}: {str(e)}")
-                return None
-        
-        logger.warning(f"Unsupported date index type: {type(index)}")
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error formatting date index: {str(e)}", exc_info=True)
-        return None
 
 
 def calculate_change_values(current_price, previous_close):
@@ -175,7 +122,7 @@ def get_stock_history(ticker):
             'period': period,
             'interval': interval,
             'data': [{
-                'date': format_date_index(index),  # Use the new format_date_index function for date handling
+                'date': index.strftime("%Y-%m-%d"),  # Change here to format date
                 'open': validate_numeric(row['Open']),
                 'high': validate_numeric(row['High']),
                 'low': validate_numeric(row['Low']),
@@ -364,39 +311,22 @@ def get_analyst_recommendations():
         stock = yf.Ticker(ticker)
         recommendations = stock.recommendations
         
-        if recommendations is None:
-            logger.info(f"No recommendations data available for {ticker}")
-            return jsonify({
+        if recommendations is not None:
+            recommendations = recommendations.fillna(None)
+            data = {
+                'symbol': ticker,
+                'recommendations': recommendations.to_dict('records'),
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        else:
+            data = {
                 'symbol': ticker,
                 'recommendations': None,
                 'timestamp': datetime.datetime.now().isoformat()
-            })
-
-        # Convert DataFrame to records, handling NaN values
-        recommendations_records = []
-        for index, row in recommendations.iterrows():
-            record = {}
-            for column in recommendations.columns:
-                value = row[column]
-                if pd.isna(value):
-                    record[column] = None
-                elif isinstance(value, (np.int64, np.float64)):
-                    record[column] = value.item()  # Convert numpy types to native Python types
-                else:
-                    record[column] = value
-            # Use the new format_date_index function for date handling
-            record['date'] = format_date_index(index)
-            recommendations_records.append(record)
-
-        data = {
-            'symbol': ticker,
-            'recommendations': recommendations_records,
-            'timestamp': datetime.datetime.now().isoformat()
-        }
+            }
 
         return jsonify(data)
     except Exception as e:
-        logger.error(f"Error fetching recommendations for {ticker}: {str(e)}", exc_info=True)
         return jsonify(error=f"Failed to fetch analyst recommendations: {str(e)}"), 500
 
 
