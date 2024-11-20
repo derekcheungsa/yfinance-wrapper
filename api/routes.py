@@ -561,3 +561,52 @@ def get_historical_changes(stock, ticker):
         return calculate_change_values(current_price, previous_close)
     except Exception:
         return None, None
+
+@api_bp.route('/stock/insider_trades', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_insider_trades():
+    """Get insider trading data for a stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        insider_trades = stock.institutional_holders
+        
+        if insider_trades is None or insider_trades.empty:
+            return jsonify({
+                'symbol': ticker,
+                'insider_trades': [],
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        # Convert insider trades DataFrame to list of records
+        trades_list = []
+        for _, row in insider_trades.iterrows():
+            trade_data = {
+                'holder': str(row.get('Holder', '')),
+                'shares': int(row.get('Shares', 0)),
+                'date_reported': row.get('Date Reported', '').strftime('%Y-%m-%d') if pd.notnull(row.get('Date Reported')) else None,
+                'value': float(row.get('Value', 0)) if pd.notnull(row.get('Value')) else None,
+                'pct_out': float(row.get('% Out', 0)) if pd.notnull(row.get('% Out')) else None
+            }
+            trades_list.append(trade_data)
+
+        return jsonify({
+            'symbol': ticker,
+            'insider_trades': trades_list,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch insider trades: {str(e)}"), 500
