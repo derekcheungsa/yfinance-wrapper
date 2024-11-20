@@ -97,9 +97,18 @@ async function tryEndpoint(endpoint, method = 'GET', body = null) {
     }
 }
 
+// Initialize Bootstrap tabs
+function initBootstrapTabs() {
+    const tabElements = document.querySelectorAll('[data-bs-toggle="tab"]');
+    tabElements.forEach(tab => {
+        new bootstrap.Tab(tab);
+    });
+}
+
 // Initialize documentation page
 function initDocs() {
     addCopyButtons();
+    initBootstrapTabs();
     
     // Add CSS for JSON highlighting
     const style = document.createElement('style');

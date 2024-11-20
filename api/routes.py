@@ -5,6 +5,12 @@ from .utils import validate_ticker, RateLimiter
 import datetime
 import pandas as pd
 import numpy as np
+import logging
+from concurrent.futures import ThreadPoolExecutor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
 api_bp = Blueprint('api', __name__)
@@ -287,3 +293,229 @@ def get_earnings_estimate(ticker):
         return jsonify(data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
+
+
+def calculate_rating_distribution(recommendation_mean, num_analysts):
+    """
+    Calculate rating distribution based on recommendation mean and total analysts.
+    recommendation_mean is on a scale of 1-5 where:
+    1-1.5: Strong Buy
+    1.5-2.5: Buy
+    2.5-3.5: Hold
+    3.5-4.5: Sell
+    4.5-5: Strong Sell
+    """
+    if recommendation_mean is None or num_analysts is None or num_analysts == 0:
+        return None
+
+    # Calculate weights based on distance from recommendation_mean
+    weights = {
+        'strongBuy': max(0, min(1, (1.5 - recommendation_mean) / 0.5)),
+        'buy': max(0, min(1, (2.5 - recommendation_mean) / 1.0 if recommendation_mean >= 1.5 else (recommendation_mean - 1.0) / 0.5)),
+        'hold': max(0, min(1, (3.5 - recommendation_mean) / 1.0 if recommendation_mean >= 2.5 else (recommendation_mean - 1.5) / 1.0)),
+        'sell': max(0, min(1, (4.5 - recommendation_mean) / 1.0 if recommendation_mean >= 3.5 else (recommendation_mean - 2.5) / 1.0)),
+        'strongSell': max(0, min(1, (recommendation_mean - 4.5) / 0.5 if recommendation_mean >= 4.5 else 0))
+    }
+
+    # Calculate initial distribution
+    total_weight = sum(weights.values())
+    if total_weight == 0:
+        return None
+
+    distribution = {
+        rating: round(weight * num_analysts / total_weight)
+        for rating, weight in weights.items()
+    }
+
+    # Adjust to ensure total equals num_analysts
+    total = sum(distribution.values())
+    if total != num_analysts:
+        # Find the rating with the highest weight and adjust it
+        max_rating = max(weights.items(), key=lambda x: x[1])[0]
+        distribution[max_rating] += (num_analysts - total)
+
+    return distribution
+
+
+def validate_tickers(tickers):
+    """Validate and sanitize a list of tickers"""
+    if not isinstance(tickers, list):
+        return False
+    
+    if len(tickers) > 10:
+        return False
+    
+    return all(validate_ticker(ticker) for ticker in tickers)
+
+def process_tickers_parallel(tickers, func):
+    """Process a list of tickers in parallel using a thread pool"""
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(func, tickers))
+    return results
+
+
+@api_bp.route('/stock/analyst_ratings', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_analyst_ratings():
+    """Get analyst ratings summary for given stocks"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
+
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
+    
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
+
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
+            # Extract key metrics
+            recommendation_mean = validate_numeric(info.get('recommendationMean'))
+            num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
+            recommendation_key = info.get('recommendationKey', 'N/A')
+
+            # Validate essential data
+            if recommendation_mean is None or num_analysts is None or num_analysts == 0:
+                return {
+                    'message': 'Insufficient analyst coverage data available',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+
+            # Calculate rating distribution
+            distribution = calculate_rating_distribution(recommendation_mean, int(num_analysts))
+            
+            if distribution is None:
+                return {
+                    'message': 'Could not calculate rating distribution',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+
+            return {
+                'ratings': {
+                    'raw': {
+                        'recommendationMean': recommendation_mean,
+                        'numberOfAnalystOpinions': num_analysts,
+                        'recommendationKey': recommendation_key
+                    },
+                    'distribution': distribution
+                },
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error fetching analyst ratings for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch analyst ratings: {str(e)}"}
+
+    results = process_tickers_parallel(tickers, process_single_ticker)
+    return jsonify(results)
+
+@api_bp.route('/stock/price_targets', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_price_targets():
+    """Get analyst price targets for given stocks"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
+
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
+    
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
+
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
+            # Extract price targets
+            data = {
+                'price_targets': {
+                    'high': validate_numeric(info.get('targetHighPrice')),
+                    'low': validate_numeric(info.get('targetLowPrice')),
+                    'mean': validate_numeric(info.get('targetMeanPrice')),
+                    'median': validate_numeric(info.get('targetMedianPrice')),
+                    'current_price': validate_numeric(info.get('currentPrice')),
+                    'number_of_analysts': validate_numeric(info.get('numberOfAnalystOpinions'))
+                },
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+
+            # Calculate percentage differences from current price
+            if data['price_targets']['current_price']:
+                current_price = data['price_targets']['current_price']
+                for target_type in ['high', 'low', 'mean', 'median']:
+                    target_price = data['price_targets'][target_type]
+                    if target_price:
+                        data['price_targets'][f'{target_type}_pct_diff'] = \
+                            ((target_price - current_price) / current_price) * 100
+
+            return data
+        except Exception as e:
+            logger.error(f"Error fetching price targets for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch price targets: {str(e)}"}
+
+    results = process_tickers_parallel(tickers, process_single_ticker)
+    return jsonify(results)
+
+@api_bp.route('/stock/analyst_recommendations', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_analyst_recommendations():
+    """Get analyst recommendations for given stocks"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
+
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
+    
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
+
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            recommendations = stock.recommendations
+            
+            if recommendations is None:
+                return {
+                    'message': 'No recommendations data available',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+
+            # Convert recommendations DataFrame to records
+            recommendations_data = recommendations.tail(10).to_dict('records')
+            
+            # Convert timestamps to ISO format strings
+            for rec in recommendations_data:
+                if 'Date' in rec:
+                    rec['Date'] = rec['Date'].isoformat()
+
+            return {
+                'recommendations': recommendations_data,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error fetching recommendations for {ticker}: {str(e)}")
+            return {'error': f"Failed to fetch recommendations: {str(e)}"}
+
+    results = {ticker: process_single_ticker(ticker) for ticker in tickers}
+    return jsonify(results)
