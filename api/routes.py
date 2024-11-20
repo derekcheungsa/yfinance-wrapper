@@ -7,8 +7,11 @@ import pandas as pd
 import numpy as np
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
@@ -26,16 +29,30 @@ def validate_numeric(value, fallback=None):
 
 def format_date(date_value):
     """
-    Format date values with proper error handling
+    Format date values with improved error handling and debugging
     Returns None if date is invalid or None
     """
     try:
+        logger.debug(f"Processing date value: {date_value}, type: {type(date_value)}")
+        
         if pd.isnull(date_value):
+            logger.debug("Date value is null")
             return None
+            
         if isinstance(date_value, str):
-            date_value = pd.to_datetime(date_value)
+            logger.debug(f"Converting string date: {date_value}")
+            try:
+                date_value = pd.to_datetime(date_value)
+            except Exception as e:
+                logger.error(f"Error converting string date {date_value}: {str(e)}")
+                return None
+                
         if isinstance(date_value, (pd.Timestamp, datetime.datetime)):
-            return date_value.strftime('%Y-%m-%d')
+            formatted_date = date_value.strftime('%Y-%m-%d')
+            logger.debug(f"Formatted date: {formatted_date}")
+            return formatted_date
+            
+        logger.warning(f"Unhandled date type: {type(date_value)}")
         return None
     except Exception as e:
         logger.error(f"Error formatting date {date_value}: {str(e)}")
@@ -68,30 +85,38 @@ def get_insider_trades():
         
         if inst_holders_df is not None and not inst_holders_df.empty:
             logger.info(f"Processing institutional holders for {ticker}")
+            logger.debug(f"Raw institutional holders DataFrame:\n{inst_holders_df.to_string()}")
+            
             for _, holder in inst_holders_df.iterrows():
-                holder_shares = validate_numeric(holder.get('Shares'), 0)
-                date_reported = format_date(holder.get('Date Reported'))
+                # Log raw holder data for debugging
+                logger.debug(f"Processing holder row:\n{holder.to_string()}")
                 
-                # Log date processing for debugging
-                logger.debug(f"Raw date value: {holder.get('Date Reported')}")
-                logger.debug(f"Formatted date: {date_reported}")
+                holder_shares = validate_numeric(holder.get('Shares'), 0)
+                raw_date = holder.get('Date Reported')
+                logger.debug(f"Raw date from holder: {raw_date}, type: {type(raw_date)}")
+                
+                date_reported = format_date(raw_date)
+                logger.debug(f"Processed date_reported: {date_reported}")
                 
                 # Calculate percentage of shares outstanding
                 pct_out = round((holder_shares / shares_outstanding * 100), 2) if shares_outstanding > 0 else 0.0
                 
-                institutional_holders.append({
+                holder_data = {
                     'holder': holder.get('Holder', ''),
                     'shares': holder_shares,
                     'pct_out': pct_out,
                     'value': validate_numeric(holder.get('Value'), 0),
                     'date_reported': date_reported
-                })
+                }
+                logger.debug(f"Processed holder data: {holder_data}")
+                institutional_holders.append(holder_data)
 
         # Get major holders data
         major_holders = []
         maj_holders_df = stock.major_holders
         
         if maj_holders_df is not None and not maj_holders_df.empty:
+            logger.debug(f"Raw major holders DataFrame:\n{maj_holders_df.to_string()}")
             for _, holder in maj_holders_df.iterrows():
                 if len(holder) >= 2:  # Ensure we have both percentage and holder type
                     pct = validate_numeric(holder[0].strip('%'), 0) if holder[0] else 0.0
