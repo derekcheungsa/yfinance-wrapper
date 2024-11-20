@@ -429,118 +429,112 @@ def get_analyst_ratings():
             # Extract key metrics
             recommendation_mean = validate_numeric(info.get('recommendationMean'))
             num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
-            recommendation_key = info.get('recommendationKey', 'N/A')
-
-            # Validate essential data
-            if recommendation_mean is None or num_analysts is None or num_analysts == 0:
-                return {
-                    'symbol': ticker,
-                    'message': 'Insufficient analyst coverage data available',
-                    'timestamp': datetime.datetime.now().isoformat()
-                }
 
             # Calculate rating distribution
-            rating_distribution = calculate_rating_distribution(recommendation_mean, num_analysts)
-            
-            if rating_distribution is None:
-                return {
-                    'symbol': ticker,
-                    'message': 'Could not calculate rating distribution',
-                    'timestamp': datetime.datetime.now().isoformat()
-                }
+            distribution = calculate_rating_distribution(recommendation_mean, num_analysts)
 
             return {
                 'symbol': ticker,
-                'recommendation_mean': recommendation_mean,
-                'recommendation_key': recommendation_key,
-                'number_of_analysts': num_analysts,
-                'rating_distribution': rating_distribution,
-                'timestamp': datetime.datetime.now().isoformat()
+                'average_rating': recommendation_mean,
+                'num_analysts': num_analysts,
+                'distribution': distribution,
             }
         except Exception as e:
-            logger.error(f"Failed to fetch analyst ratings for {ticker}: {str(e)}")
-            return {'symbol': ticker, 'error': str(e)}
+            logger.error(f"Error processing analyst ratings for {ticker}: {str(e)}")
+            return {
+                'symbol': ticker,
+                'error': str(e)
+            }
 
-    # Process all tickers in parallel
+    # Process all tickers
     results = process_tickers_parallel(tickers, process_single_ticker)
-    
-    # Format response
-    response = {ticker: result for ticker, result in zip(tickers, results)}
-    return jsonify(response)
 
+    # Format response
+    response = {
+        'ratings': [result for result in results if result is not None],
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+
+    return jsonify(response)
 
 @api_bp.route('/stock/analyst_recommendations', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_analyst_recommendations():
-    """Get analyst recommendations history for given stocks"""
+    """Get analyst recommendations for given stocks"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
+    if not request_data:
+        return jsonify(error="Missing request body"), 400
 
-    ticker = request_data['ticker']
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
+    # Handle both single ticker and multiple tickers
+    tickers = request_data.get('tickers', [request_data.get('ticker')])
+    
+    if not validate_tickers(tickers):
+        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
 
-    try:
-        stock = yf.Ticker(ticker)
-        recommendations = stock.recommendations
-        
-        logger.info(f"Raw recommendations data for {ticker}: {recommendations}")
-        
-        if recommendations is None or recommendations.empty:
-            return jsonify({
+    def process_single_ticker(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            recommendations = stock.recommendations
+            
+            logger.info(f"Raw recommendations data for {ticker}: {recommendations}")
+            
+            if recommendations is None or recommendations.empty:
+                return {
+                    'symbol': ticker,
+                    'recommendations': [],
+                }
+
+            recommendations_list = []
+            for idx, row in recommendations.iterrows():
+                try:
+                    rec = {
+                        'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx),
+                        'firm': row.get('Firm', None),
+                        'to_grade': row.get('To Grade', None),
+                        'from_grade': row.get('From Grade', None),
+                        'action': row.get('Action', None)
+                    }
+                    recommendations_list.append(rec)
+                except Exception as e:
+                    logger.error(f"Error processing recommendation row for {ticker}: {e}")
+                    continue
+
+            return {
                 'symbol': ticker,
-                'recommendations': [],
-                'timestamp': datetime.datetime.now().isoformat()
-            })
-
-        # Convert recommendations DataFrame to properly formatted records
-        recommendations_list = []
-        for period, row in recommendations.iterrows():
-            rec = {
-                'period': row.name if isinstance(row.name, str) else f"{row.name}m",
-                'ratings': {
-                    'strongBuy': int(row['strongBuy']) if 'strongBuy' in row and pd.notnull(row['strongBuy']) else 0,
-                    'buy': int(row['buy']) if 'buy' in row and pd.notnull(row['buy']) else 0,
-                    'hold': int(row['hold']) if 'hold' in row and pd.notnull(row['hold']) else 0,
-                    'sell': int(row['sell']) if 'sell' in row and pd.notnull(row['sell']) else 0,
-                    'strongSell': int(row['strongSell']) if 'strongSell' in row and pd.notnull(row['strongSell']) else 0
-                },
-                'total_analysts': sum([
-                    int(row[col]) if col in row and pd.notnull(row[col]) else 0
-                    for col in ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
-                ])
+                'recommendations': recommendations_list,
             }
-            recommendations_list.append(rec)
 
-        return jsonify({
-            'symbol': ticker,
-            'recommendations': recommendations_list,
-            'timestamp': datetime.datetime.now().isoformat()
-        })
+        except Exception as e:
+            logger.error(f"Error processing analyst recommendations for {ticker}: {str(e)}")
+            return {
+                'symbol': ticker,
+                'error': str(e)
+            }
 
-    except Exception as e:
-        logger.error(f"Failed to fetch analyst recommendations for {ticker}: {str(e)}")
-        return jsonify({
-            'symbol': ticker,
-            'error': str(e)
-        }), 500
+    # Process all tickers
+    results = process_tickers_parallel(tickers, process_single_ticker)
 
+    # Format response
+    response = {
+        'recommendations': [result for result in results if result is not None],
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+
+    return jsonify(response)
 
 @api_bp.route('/stock/price_targets', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_price_targets():
-    """Get analyst price targets for given stocks"""
+    """Get price targets for given stocks"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
-    
     if not request_data:
         return jsonify(error="Missing request body"), 400
 
@@ -554,26 +548,30 @@ def get_price_targets():
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
-            
-            # Extract price target information
-            price_targets = {
+
+            return {
                 'symbol': ticker,
                 'target_high': validate_numeric(info.get('targetHighPrice')),
                 'target_low': validate_numeric(info.get('targetLowPrice')),
                 'target_mean': validate_numeric(info.get('targetMeanPrice')),
                 'target_median': validate_numeric(info.get('targetMedianPrice')),
-                'number_of_analysts': validate_numeric(info.get('numberOfAnalystOpinions')),
-                'timestamp': datetime.datetime.now().isoformat()
+                'num_analysts': validate_numeric(info.get('numberOfAnalystOpinions'))
             }
-            
-            return price_targets
-        except Exception as e:
-            logger.error(f"Failed to fetch price targets for {ticker}: {str(e)}")
-            return {'symbol': ticker, 'error': str(e)}
 
-    # Process all tickers in parallel
+        except Exception as e:
+            logger.error(f"Error processing price targets for {ticker}: {str(e)}")
+            return {
+                'symbol': ticker,
+                'error': str(e)
+            }
+
+    # Process all tickers
     results = process_tickers_parallel(tickers, process_single_ticker)
-    
+
     # Format response
-    response = {ticker: result for ticker, result in zip(tickers, results)}
+    response = {
+        'price_targets': [result for result in results if result is not None],
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+
     return jsonify(response)
