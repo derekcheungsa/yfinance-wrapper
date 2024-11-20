@@ -19,9 +19,11 @@ api_bp = Blueprint('api', __name__)
 rate_limiter = RateLimiter(requests=100, window=60)  # 100 requests per minute
 
 def validate_numeric(value, fallback=None):
-    """Validate and convert numeric values"""
+    """Validate and convert numeric values, handling NaN"""
     try:
         if value is not None:
+            if pd.isna(value) or np.isnan(value):
+                return fallback
             return float(value)
         return fallback
     except (ValueError, TypeError):
@@ -57,6 +59,91 @@ def format_date(date_value):
     except Exception as e:
         logger.error(f"Error formatting date {date_value}: {str(e)}")
         return None
+
+@api_bp.route('/stock/options', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_options():
+    """Get options chain data for a stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # Get all options data
+        all_options = stock.options
+        if not all_options:
+            return jsonify({
+                'symbol': ticker,
+                'options_chain': [],
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        options_chain = []
+        for expiration in all_options:
+            try:
+                # Get options chain for this expiration
+                opt = stock.option_chain(expiration)
+                
+                # Process calls
+                calls = []
+                if opt.calls is not None and not opt.calls.empty:
+                    for _, row in opt.calls.iterrows():
+                        call = {
+                            'strike': validate_numeric(row.get('strike')),
+                            'last_price': validate_numeric(row.get('lastPrice')),
+                            'bid': validate_numeric(row.get('bid')),
+                            'ask': validate_numeric(row.get('ask')),
+                            'volume': validate_numeric(row.get('volume'), 0),
+                            'open_interest': validate_numeric(row.get('openInterest'), 0),
+                            'implied_volatility': validate_numeric(row.get('impliedVolatility')),
+                            'in_the_money': bool(row.get('inTheMoney', False))
+                        }
+                        calls.append({k: v for k, v in call.items() if v is not None})
+
+                # Process puts
+                puts = []
+                if opt.puts is not None and not opt.puts.empty:
+                    for _, row in opt.puts.iterrows():
+                        put = {
+                            'strike': validate_numeric(row.get('strike')),
+                            'last_price': validate_numeric(row.get('lastPrice')),
+                            'bid': validate_numeric(row.get('bid')),
+                            'ask': validate_numeric(row.get('ask')),
+                            'volume': validate_numeric(row.get('volume'), 0),
+                            'open_interest': validate_numeric(row.get('openInterest'), 0),
+                            'implied_volatility': validate_numeric(row.get('impliedVolatility')),
+                            'in_the_money': bool(row.get('inTheMoney', False))
+                        }
+                        puts.append({k: v for k, v in put.items() if v is not None})
+
+                options_chain.append({
+                    'expiration': expiration,
+                    'calls': calls,
+                    'puts': puts
+                })
+            except Exception as e:
+                logger.error(f"Error processing expiration {expiration}: {str(e)}")
+                continue
+
+        return jsonify({
+            'symbol': ticker,
+            'options_chain': options_chain,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching options data for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch options data: {str(e)}"), 500
 
 @api_bp.route('/stock/insider_trades', methods=['POST'])
 @rate_limiter.limit
