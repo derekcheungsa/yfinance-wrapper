@@ -7,8 +7,11 @@ import pandas as pd
 import numpy as np
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Define Blueprint and rate limiter
@@ -16,14 +19,222 @@ api_bp = Blueprint('api', __name__)
 rate_limiter = RateLimiter(requests=100, window=60)  # 100 requests per minute
 
 def validate_numeric(value, fallback=None):
-    """Validate and convert numeric values"""
+    """Validate and convert numeric values, handling NaN"""
     try:
         if value is not None:
+            if pd.isna(value) or np.isnan(value):
+                return fallback
             return float(value)
         return fallback
     except (ValueError, TypeError):
         return fallback
 
+def format_date(date_value):
+    """
+    Format date values with improved error handling and debugging
+    Returns None if date is invalid or None
+    """
+    try:
+        logger.debug(f"Processing date value: {date_value}, type: {type(date_value)}")
+        
+        if pd.isnull(date_value):
+            logger.debug("Date value is null")
+            return None
+            
+        if isinstance(date_value, str):
+            logger.debug(f"Converting string date: {date_value}")
+            try:
+                date_value = pd.to_datetime(date_value)
+            except Exception as e:
+                logger.error(f"Error converting string date {date_value}: {str(e)}")
+                return None
+                
+        if isinstance(date_value, (pd.Timestamp, datetime.datetime)):
+            formatted_date = date_value.strftime('%Y-%m-%d')
+            logger.debug(f"Formatted date: {formatted_date}")
+            return formatted_date
+            
+        logger.warning(f"Unhandled date type: {type(date_value)}")
+        return None
+    except Exception as e:
+        logger.error(f"Error formatting date {date_value}: {str(e)}")
+        return None
+
+@api_bp.route('/stock/options', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_options():
+    """Get options chain data for a stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # Get all options data
+        all_options = stock.options
+        if not all_options:
+            return jsonify({
+                'symbol': ticker,
+                'options_chain': [],
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        options_chain = []
+        for expiration in all_options:
+            try:
+                # Get options chain for this expiration
+                opt = stock.option_chain(expiration)
+                
+                # Process calls
+                calls = []
+                if opt.calls is not None and not opt.calls.empty:
+                    for _, row in opt.calls.iterrows():
+                        call = {
+                            'strike': validate_numeric(row.get('strike')),
+                            'last_price': validate_numeric(row.get('lastPrice')),
+                            'bid': validate_numeric(row.get('bid')),
+                            'ask': validate_numeric(row.get('ask')),
+                            'volume': validate_numeric(row.get('volume'), 0),
+                            'open_interest': validate_numeric(row.get('openInterest'), 0),
+                            'implied_volatility': validate_numeric(row.get('impliedVolatility')),
+                            'in_the_money': bool(row.get('inTheMoney', False))
+                        }
+                        calls.append({k: v for k, v in call.items() if v is not None})
+
+                # Process puts
+                puts = []
+                if opt.puts is not None and not opt.puts.empty:
+                    for _, row in opt.puts.iterrows():
+                        put = {
+                            'strike': validate_numeric(row.get('strike')),
+                            'last_price': validate_numeric(row.get('lastPrice')),
+                            'bid': validate_numeric(row.get('bid')),
+                            'ask': validate_numeric(row.get('ask')),
+                            'volume': validate_numeric(row.get('volume'), 0),
+                            'open_interest': validate_numeric(row.get('openInterest'), 0),
+                            'implied_volatility': validate_numeric(row.get('impliedVolatility')),
+                            'in_the_money': bool(row.get('inTheMoney', False))
+                        }
+                        puts.append({k: v for k, v in put.items() if v is not None})
+
+                options_chain.append({
+                    'expiration': expiration,
+                    'calls': calls,
+                    'puts': puts
+                })
+            except Exception as e:
+                logger.error(f"Error processing expiration {expiration}: {str(e)}")
+                continue
+
+        return jsonify({
+            'symbol': ticker,
+            'options_chain': options_chain,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching options data for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch options data: {str(e)}"), 500
+
+@api_bp.route('/stock/insider_trades', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_insider_trades():
+    """Get insider trading data including institutional holders"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        shares_outstanding = validate_numeric(info.get('sharesOutstanding'), 0)
+        
+        # Get institutional holders
+        institutional_holders = []
+        inst_holders_df = stock.institutional_holders
+        
+        if inst_holders_df is not None and not inst_holders_df.empty:
+            logger.info(f"Processing institutional holders for {ticker}")
+            logger.debug(f"Raw institutional holders DataFrame:\n{inst_holders_df.to_string()}")
+            
+            # Convert DataFrame to records without any sorting or modification
+            holder_records = inst_holders_df.to_dict('records')
+            logger.debug(f"Converted DataFrame records: {holder_records}")
+            
+            for holder_data in holder_records:
+                logger.debug(f"Processing holder data:\n{holder_data}")
+                
+                holder_shares = validate_numeric(holder_data.get('Shares'), 0)
+                raw_date = holder_data.get('Date Reported')
+                logger.debug(f"Raw date from holder: {raw_date}, type: {type(raw_date)}")
+                
+                date_reported = format_date(raw_date)
+                logger.debug(f"Processed date_reported: {date_reported}")
+                
+                # Calculate percentage of shares outstanding
+                pct_out = round((holder_shares / shares_outstanding * 100), 2) if shares_outstanding > 0 else 0.0
+                
+                processed_holder = {
+                    'holder': holder_data.get('Holder', ''),
+                    'shares': holder_shares,
+                    'pct_out': pct_out,
+                    'value': validate_numeric(holder_data.get('Value'), 0),
+                    'date_reported': date_reported
+                }
+                logger.debug(f"Final processed holder entry: {processed_holder}")
+                institutional_holders.append(processed_holder)
+
+        # Get major holders data
+        major_holders = []
+        maj_holders_df = stock.major_holders
+        
+        if maj_holders_df is not None and not maj_holders_df.empty:
+            logger.debug(f"Raw major holders DataFrame:\n{maj_holders_df.to_string()}")
+            for _, holder in maj_holders_df.iterrows():
+                if len(holder) >= 2:  # Ensure we have both percentage and holder type
+                    pct = validate_numeric(holder[0].strip('%'), 0) if holder[0] else 0.0
+                    major_holders.append({
+                        'pct_held': round(pct, 2),
+                        'holder_type': holder[1]
+                    })
+
+        data = {
+            'symbol': ticker,
+            'shares_outstanding': shares_outstanding,
+            'institutional_holders': institutional_holders,
+            'major_holders': major_holders,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+        
+        # Log the final response data for verification
+        logger.debug(f"Final response data for {ticker}:")
+        for holder in data['institutional_holders']:
+            logger.debug(f"Holder: {holder['holder']}, Date: {holder['date_reported']}")
+
+        return jsonify(data)
+
+    except Exception as e:
+        logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch insider trades data: {str(e)}"), 500
+
+    
 def calculate_rating_distribution(recommendation_mean, num_analysts):
     """
     Calculate rating distribution based on recommendation mean and total analysts.
@@ -143,9 +354,6 @@ def get_analyst_recommendations():
                 'recommendations': [],
                 'timestamp': datetime.datetime.now().isoformat()
             })
-
-        # Log raw recommendations data for debugging
-        logger.info(f"Raw recommendations data for {ticker}:\n{recommendations}")
 
         # Convert recommendations DataFrame to list of records
         recommendations_list = []
@@ -275,11 +483,8 @@ def get_stock_data(ticker):
 
         # If change values are None, try calculating from current and previous prices
         if (change is None or change_percent is None) and current_price is not None and previous_close is not None:
-            change, change_percent = calculate_change_values(current_price, previous_close)
-
-        # If still None, try alternative fields
-        if change is None:
-            change = validate_numeric(info.get('regularMarketPrice')) - validate_numeric(info.get('regularMarketPreviousClose'))
+            change = current_price - previous_close
+            change_percent = (change / previous_close) * 100 if previous_close != 0 else 0.0
 
         # Prepare response data
         data = {
@@ -301,7 +506,6 @@ def get_stock_data(ticker):
     except Exception as e:
         return jsonify(error=f"Failed to fetch stock data: {str(e)}"), 500
 
-
 @api_bp.route('/stock/<ticker>/history')
 @rate_limiter.limit
 @cache.cached(timeout=300)
@@ -322,7 +526,7 @@ def get_stock_history(ticker):
             'period': period,
             'interval': interval,
             'data': [{
-                'date': index.strftime("%Y-%m-%d"),  # Change here to format date
+                'date': index.strftime("%Y-%m-%d"),
                 'open': validate_numeric(row['Open']),
                 'high': validate_numeric(row['High']),
                 'low': validate_numeric(row['Low']),
@@ -334,7 +538,6 @@ def get_stock_history(ticker):
         return jsonify(data)
     except Exception as e:
         return jsonify(error=f"Failed to fetch historical data: {str(e)}"), 500
-
 
 @api_bp.route('/stock/<ticker>/info')
 @rate_limiter.limit
@@ -407,157 +610,79 @@ def get_company_info(ticker):
     except Exception as e:
         return jsonify(error=f"Failed to fetch company information: {str(e)}"), 500
 
-
 @api_bp.route('/stock/options', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
-def get_option_chain():
+def get_options_data():
     """Get option chains for a given stock for the next 3 expiration dates"""
-    # Validate request body
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
-    
-    # Validate required fields
     if not request_data or 'ticker' not in request_data:
         return jsonify(error="Missing required field: ticker"), 400
 
     ticker = request_data['ticker']
-    
-    # Validate ticker
     if not validate_ticker(ticker):
         return jsonify(error="Invalid ticker symbol"), 400
 
     try:
         stock = yf.Ticker(ticker)
-        expiration_dates = stock.options[:3]  # Fetch next 3 expiration dates
+        
+        # Get all expiration dates
+        try:
+            expirations = stock.options
+        except:
+            return jsonify(error="No options data available"), 404
 
-        if not expiration_dates:
-            return jsonify(error="No options data available for this ticker"), 404
+        if not expirations:
+            return jsonify(error="No options data available"), 404
 
-        option_data = {
-            'symbol': ticker,
-            'expirations': {}
-        }
+        # Take the next 3 expiration dates
+        next_expirations = expirations[:3]
 
-        for date in expiration_dates:
+        # Get option chain data for each expiration
+        options_data = {}
+        for date in next_expirations:
             try:
-                options = stock.option_chain(date)
+                opt = stock.option_chain(date)
                 
-                # Validate options data
-                if options is None or not hasattr(options, 'calls') or not hasattr(options, 'puts'):
-                    logger.warning(f"Invalid options data structure for {ticker} on {date}")
-                    continue
+                # Process calls
+                calls = [{
+                    'strike': validate_numeric(row['strike']),
+                    'lastPrice': validate_numeric(row['lastPrice']),
+                    'bid': validate_numeric(row['bid']),
+                    'ask': validate_numeric(row['ask']),
+                    'volume': validate_numeric(row['volume']),
+                    'openInterest': validate_numeric(row['openInterest']),
+                    'impliedVolatility': validate_numeric(row['impliedVolatility'])
+                } for _, row in opt.calls.iterrows()]
 
-                # Replace NaN values with None and convert numeric columns
-                def clean_options_data(df):
-                    # Replace infinite values with NaN first
-                    df = df.replace([np.inf, -np.inf], np.nan)
-                    
-                    # Replace NaN with specific values based on column type
-                    numeric_cols = ['strike', 'lastPrice', 'bid', 'ask', 'change', 'percentChange', 
-                                'volume', 'openInterest', 'impliedVolatility']
-                    
-                    # For numeric columns, replace NaN with 0
-                    for col in numeric_cols:
-                        if col in df.columns:
-                            df[col] = df[col].fillna(0)
-                    
-                    # For boolean columns like inTheMoney, replace NaN with False
-                    if 'inTheMoney' in df.columns:
-                        df['inTheMoney'] = df['inTheMoney'].fillna(False)
-                    
-                    # Convert to proper types
-                    for col in numeric_cols:
-                        if col in df.columns:
-                            df[col] = df[col].astype(float)
-                    
-                    return df
+                # Process puts
+                puts = [{
+                    'strike': validate_numeric(row['strike']),
+                    'lastPrice': validate_numeric(row['lastPrice']),
+                    'bid': validate_numeric(row['bid']),
+                    'ask': validate_numeric(row['ask']),
+                    'volume': validate_numeric(row['volume']),
+                    'openInterest': validate_numeric(row['openInterest']),
+                    'impliedVolatility': validate_numeric(row['impliedVolatility'])
+                } for _, row in opt.puts.iterrows()]
 
-                # Clean and convert DataFrames to records
-                try:
-                    calls = clean_options_data(options.calls).to_dict(orient='records')
-                    puts = clean_options_data(options.puts).to_dict(orient='records')
-
-                    option_data['expirations'][date] = {
-                        'call_options': calls,
-                        'put_options': puts
-                    }
-                except Exception as e:
-                    logger.error(f"Error processing options for date {date}: {str(e)}")
-                    continue
-
-                if not option_data['expirations']:
-                    return jsonify(error="No valid options data available for this ticker"), 404
-
-                option_data['timestamp'] = datetime.datetime.now().isoformat()
-                return jsonify(option_data)
-
+                options_data[date] = {
+                    'calls': calls,
+                    'puts': puts
+                }
             except Exception as e:
-                logger.error(f"Error processing options for date {date}: {str(e)}")
+                logger.error(f"Error fetching options for date {date}: {str(e)}")
                 continue
 
-        if not option_data['expirations']:
-            return jsonify(error="No valid options data available for this ticker"), 404
-
-        option_data['timestamp'] = datetime.datetime.now().isoformat()
-        return jsonify(option_data)
+        return jsonify({
+            'symbol': ticker,
+            'options_data': options_data,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
 
     except Exception as e:
-        logger.error(f"Failed to fetch option chains for {ticker}: {str(e)}")
-        return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
-
-
-@api_bp.route('/stock/<ticker>/earnings_estimate')
-@rate_limiter.limit
-@cache.cached(timeout=300)
-def get_earnings_estimate(ticker):
-    """Get earnings estimate data for a specific ticker"""
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
-
-    try:
-        stock = yf.Ticker(ticker)
-        earnings_estimates = stock.earnings_estimate
-
-        if earnings_estimates is not None:
-            # Adding 'Quarter' information to the earnings estimates output
-            earnings_estimates['Quarter'] = earnings_estimates.index.to_list()
-
-            data = {
-                'symbol': ticker,
-                'earnings_estimates': earnings_estimates.to_dict('records')  # Convert DataFrame to list of records
-            }
-        else:
-            data = {'symbol': ticker, 'earnings_estimates': None}
-
-        return jsonify(data)
-    except Exception as e:
-        return jsonify(error=f"Failed to fetch earnings estimate data: {str(e)}"), 500
-
-
-def calculate_change_values(current_price, previous_close):
-    """Calculate change and change percentage from current and previous prices"""
-    if current_price is None or previous_close is None or previous_close == 0:
-        return None, None
-
-    change = current_price - previous_close
-    change_percent = (change / previous_close) * 100
-    return change, change_percent
-
-
-def get_historical_changes(stock, ticker):
-    """Get changes using historical data as fallback"""
-    try:
-        # Get today's data and yesterday's close
-        history = stock.history(period="2d")
-        if len(history) < 2:
-            return None, None
-
-        current_price = history['Close'].iloc[-1]
-        previous_close = history['Close'].iloc[-2]
-
-        return calculate_change_values(current_price, previous_close)
-    except Exception:
-        return None, None
+        logger.error(f"Error fetching options data for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch options data: {str(e)}"), 500

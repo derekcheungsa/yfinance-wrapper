@@ -222,6 +222,24 @@
 
                     <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/price_targets', 'POST', { ticker: 'AAPL' })">Try it</button>
                 </div>
+
+                <div class="endpoint">
+                    <h3>Get Insider Trading Data</h3>
+                    <div class="code-block">
+                        <code class="d-block bg-dark p-2 rounded">POST /stock/insider_trades</code>
+                    </div>
+                    <p>Returns insider trading data including institutional holders and their positions.</p>
+                    
+                    <div class="parameters">
+                        <h4>Request Body (JSON)</h4>
+                        <pre class="bg-dark p-2 rounded">
+{
+    "ticker": "AAPL"  // Required: Stock symbol
+}</pre>
+                    </div>
+
+                    <button class="btn btn-primary mt-3" onclick="tryEndpoint('/api/stock/insider_trades', 'POST', { ticker: 'AAPL' })">Try it</button>
+                </div>
             </div>
         </div>
 
