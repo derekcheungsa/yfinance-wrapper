@@ -65,6 +65,53 @@ def calculate_rating_distribution(recommendation_mean, num_analysts):
 
     return distribution
 
+def calculate_rating_trend(ticker, stock):
+    """Calculate rating trends over time for a given stock"""
+    try:
+        # Get recommendations history
+        recommendations = stock.recommendations
+        if recommendations is None or recommendations.empty:
+            return None
+
+        # Calculate the weighted rating for each period
+        trends = []
+        for period, group in recommendations.groupby('period'):
+            total_ratings = sum([
+                group['strongBuy'].iloc[0],
+                group['buy'].iloc[0],
+                group['hold'].iloc[0],
+                group['sell'].iloc[0],
+                group['strongSell'].iloc[0]
+            ])
+            
+            if total_ratings > 0:
+                weighted_rating = (
+                    (1 * group['strongBuy'].iloc[0] +
+                     2 * group['buy'].iloc[0] +
+                     3 * group['hold'].iloc[0] +
+                     4 * group['sell'].iloc[0] +
+                     5 * group['strongSell'].iloc[0]) / total_ratings
+                )
+                
+                trend = {
+                    'period': period.strftime('%Y-%m-%d'),
+                    'weighted_rating': round(weighted_rating, 2),
+                    'total_analysts': int(total_ratings),
+                    'distribution': {
+                        'strongBuy': int(group['strongBuy'].iloc[0]),
+                        'buy': int(group['buy'].iloc[0]),
+                        'hold': int(group['hold'].iloc[0]),
+                        'sell': int(group['sell'].iloc[0]),
+                        'strongSell': int(group['strongSell'].iloc[0])
+                    }
+                }
+                trends.append(trend)
+        
+        return sorted(trends, key=lambda x: x['period'])
+    except Exception as e:
+        logger.error(f"Error calculating rating trends for {ticker}: {str(e)}")
+        return None
+
 @api_bp.route('/stock/analyst_recommendations', methods=['POST'])
 @rate_limiter.limit
 @cache.cached(timeout=300)
@@ -122,7 +169,7 @@ def get_analyst_recommendations():
 @rate_limiter.limit
 @cache.cached(timeout=300)
 def get_analyst_ratings():
-    """Get analyst ratings summary for a stock"""
+    """Get analyst ratings summary and trends for a stock"""
     if not request.is_json:
         return jsonify(error="Request must be JSON"), 400
 
@@ -138,18 +185,22 @@ def get_analyst_ratings():
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        # Extract key metrics
+        # Get current ratings
         recommendation_mean = validate_numeric(info.get('recommendationMean'))
         num_analysts = validate_numeric(info.get('numberOfAnalystOpinions'))
-
-        # Calculate rating distribution
         distribution = calculate_rating_distribution(recommendation_mean, num_analysts)
+
+        # Calculate rating trends
+        trends = calculate_rating_trend(ticker, stock)
 
         data = {
             'symbol': ticker,
-            'recommendation_mean': recommendation_mean,
-            'num_analysts': num_analysts,
-            'rating_distribution': distribution,
+            'current_ratings': {
+                'recommendation_mean': recommendation_mean,
+                'num_analysts': num_analysts,
+                'rating_distribution': distribution
+            },
+            'rating_trends': trends,
             'timestamp': datetime.datetime.now().isoformat()
         }
 
