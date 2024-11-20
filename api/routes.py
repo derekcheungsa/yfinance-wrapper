@@ -24,6 +24,96 @@ def validate_numeric(value, fallback=None):
     except (ValueError, TypeError):
         return fallback
 
+def format_date(date_value):
+    """
+    Format date values with proper error handling
+    Returns None if date is invalid or None
+    """
+    try:
+        if pd.isnull(date_value):
+            return None
+        if isinstance(date_value, str):
+            date_value = pd.to_datetime(date_value)
+        if isinstance(date_value, (pd.Timestamp, datetime.datetime)):
+            return date_value.strftime('%Y-%m-%d')
+        return None
+    except Exception as e:
+        logger.error(f"Error formatting date {date_value}: {str(e)}")
+        return None
+
+@api_bp.route('/stock/insider_trades', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_insider_trades():
+    """Get insider trading data including institutional holders"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        shares_outstanding = validate_numeric(info.get('sharesOutstanding'), 0)
+        
+        # Get institutional holders
+        institutional_holders = []
+        inst_holders_df = stock.institutional_holders
+        
+        if inst_holders_df is not None and not inst_holders_df.empty:
+            logger.info(f"Processing institutional holders for {ticker}")
+            for _, holder in inst_holders_df.iterrows():
+                holder_shares = validate_numeric(holder.get('Shares'), 0)
+                date_reported = format_date(holder.get('Date Reported'))
+                
+                # Log date processing for debugging
+                logger.debug(f"Raw date value: {holder.get('Date Reported')}")
+                logger.debug(f"Formatted date: {date_reported}")
+                
+                # Calculate percentage of shares outstanding
+                pct_out = round((holder_shares / shares_outstanding * 100), 2) if shares_outstanding > 0 else 0.0
+                
+                institutional_holders.append({
+                    'holder': holder.get('Holder', ''),
+                    'shares': holder_shares,
+                    'pct_out': pct_out,
+                    'value': validate_numeric(holder.get('Value'), 0),
+                    'date_reported': date_reported
+                })
+
+        # Get major holders data
+        major_holders = []
+        maj_holders_df = stock.major_holders
+        
+        if maj_holders_df is not None and not maj_holders_df.empty:
+            for _, holder in maj_holders_df.iterrows():
+                if len(holder) >= 2:  # Ensure we have both percentage and holder type
+                    pct = validate_numeric(holder[0].strip('%'), 0) if holder[0] else 0.0
+                    major_holders.append({
+                        'pct_held': round(pct, 2),
+                        'holder_type': holder[1]
+                    })
+
+        data = {
+            'symbol': ticker,
+            'shares_outstanding': shares_outstanding,
+            'institutional_holders': institutional_holders,
+            'major_holders': major_holders,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+
+        return jsonify(data)
+
+    except Exception as e:
+        logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch insider trades data: {str(e)}"), 500
+
 def calculate_rating_distribution(recommendation_mean, num_analysts):
     """
     Calculate rating distribution based on recommendation mean and total analysts.
@@ -116,72 +206,6 @@ def calculate_rating_trend(ticker, stock):
     except Exception as e:
         logger.error(f"Error calculating rating trends for {ticker}: {str(e)}")
         return None
-
-@api_bp.route('/stock/insider_trades', methods=['POST'])
-@rate_limiter.limit
-@cache.cached(timeout=300)
-def get_insider_trades():
-    """Get insider trading data including institutional holders"""
-    if not request.is_json:
-        return jsonify(error="Request must be JSON"), 400
-
-    request_data = request.get_json()
-    if not request_data or 'ticker' not in request_data:
-        return jsonify(error="Missing required field: ticker"), 400
-
-    ticker = request_data['ticker']
-    if not validate_ticker(ticker):
-        return jsonify(error="Invalid ticker symbol"), 400
-
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        shares_outstanding = validate_numeric(info.get('sharesOutstanding'), 0)
-        
-        # Get institutional holders
-        institutional_holders = []
-        inst_holders_df = stock.institutional_holders
-        
-        if inst_holders_df is not None and not inst_holders_df.empty:
-            for _, holder in inst_holders_df.iterrows():
-                holder_shares = validate_numeric(holder.get('Shares'), 0)
-                # Calculate percentage of shares outstanding
-                pct_out = round((holder_shares / shares_outstanding * 100), 2) if shares_outstanding > 0 else 0.0
-                
-                institutional_holders.append({
-                    'holder': holder.get('Holder', ''),
-                    'shares': holder_shares,
-                    'pct_out': pct_out,
-                    'value': validate_numeric(holder.get('Value'), 0),
-                    'date_reported': holder.get('Date Reported', '').strftime('%Y-%m-%d') if pd.notnull(holder.get('Date Reported')) else None
-                })
-
-        # Get major holders data
-        major_holders = []
-        maj_holders_df = stock.major_holders
-        
-        if maj_holders_df is not None and not maj_holders_df.empty:
-            for _, holder in maj_holders_df.iterrows():
-                if len(holder) >= 2:  # Ensure we have both percentage and holder type
-                    pct = validate_numeric(holder[0].strip('%'), 0) if holder[0] else 0.0
-                    major_holders.append({
-                        'pct_held': round(pct, 2),
-                        'holder_type': holder[1]
-                    })
-
-        data = {
-            'symbol': ticker,
-            'shares_outstanding': shares_outstanding,
-            'institutional_holders': institutional_holders,
-            'major_holders': major_holders,
-            'timestamp': datetime.datetime.now().isoformat()
-        }
-
-        return jsonify(data)
-
-    except Exception as e:
-        logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
-        return jsonify(error=f"Failed to fetch insider trades data: {str(e)}"), 500
 
 @api_bp.route('/stock/analyst_recommendations', methods=['POST'])
 @rate_limiter.limit
