@@ -2,32 +2,10 @@ import re
 import time
 from functools import wraps
 from flask import request, jsonify
-from concurrent.futures import ThreadPoolExecutor
 
 def validate_ticker(ticker):
     """Validate ticker symbol format"""
     return bool(re.match(r'^[A-Za-z\.\-]{1,10}$', ticker))
-
-def validate_tickers(tickers):
-    """Validate an array of ticker symbols"""
-    if not isinstance(tickers, list):
-        return False
-    if not tickers or len(tickers) > 10:  # Limit batch size to 10 tickers
-        return False
-    return all(validate_ticker(ticker) for ticker in tickers)
-
-def process_tickers_parallel(tickers, process_function, max_workers=5):
-    """Process multiple tickers in parallel"""
-    results = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_ticker = {executor.submit(process_function, ticker): ticker for ticker in tickers}
-        for future in future_to_ticker:
-            ticker = future_to_ticker[future]
-            try:
-                results[ticker] = future.result()
-            except Exception as e:
-                results[ticker] = {"error": str(e)}
-    return results
 
 class RateLimiter:
     def __init__(self, requests, window):
