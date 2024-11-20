@@ -478,46 +478,55 @@ def get_analyst_recommendations():
         return jsonify(error="Request must be JSON"), 400
 
     request_data = request.get_json()
-    
-    if not request_data:
-        return jsonify(error="Missing request body"), 400
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
 
-    # Handle both single ticker and multiple tickers
-    tickers = request_data.get('tickers', [request_data.get('ticker')])
-    
-    if not validate_tickers(tickers):
-        return jsonify(error="Invalid ticker symbol(s). Maximum 10 tickers allowed."), 400
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
 
-    def process_single_ticker(ticker):
-        try:
-            stock = yf.Ticker(ticker)
-            recommendations = stock.recommendations
-            
-            if recommendations is None or recommendations.empty:
-                return {'symbol': ticker, 'recommendations': []}
-            
-            # Convert recommendations DataFrame to list of records
-            recommendations_list = recommendations.reset_index().to_dict('records')
-            
-            # Format dates to ISO format
-            for rec in recommendations_list:
-                rec['Date'] = rec['Date'].strftime('%Y-%m-%d') if pd.notnull(rec['Date']) else None
-            
-            return {
+    try:
+        stock = yf.Ticker(ticker)
+        recommendations = stock.recommendations
+        
+        # Debug logging
+        logger.info(f"Raw recommendations data for {ticker}: {recommendations}")
+        
+        if recommendations is None or recommendations.empty:
+            return jsonify({
                 'symbol': ticker,
-                'recommendations': recommendations_list,
+                'recommendations': [],
                 'timestamp': datetime.datetime.now().isoformat()
-            }
-        except Exception as e:
-            logger.error(f"Failed to fetch analyst recommendations for {ticker}: {str(e)}")
-            return {'symbol': ticker, 'error': str(e)}
+            })
 
-    # Process all tickers in parallel
-    results = process_tickers_parallel(tickers, process_single_ticker)
-    
-    # Format response
-    response = {ticker: result for ticker, result in zip(tickers, results)}
-    return jsonify(response)
+        # Convert DataFrame to records with proper date handling
+        recommendations_list = []
+        for idx, row in recommendations.iterrows():
+            try:
+                rec = {
+                    'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx),
+                    'firm': row.get('Firm', None),
+                    'to_grade': row.get('To Grade', None),
+                    'from_grade': row.get('From Grade', None),
+                    'action': row.get('Action', None)
+                }
+                recommendations_list.append(rec)
+            except Exception as e:
+                logger.error(f"Error processing recommendation row: {e}")
+                continue
+
+        return jsonify({
+            'symbol': ticker,
+            'recommendations': recommendations_list,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to fetch analyst recommendations for {ticker}: {str(e)}")
+        return jsonify({
+            'symbol': ticker,
+            'error': str(e)
+        }), 500
 
 
 @api_bp.route('/stock/price_targets', methods=['POST'])
