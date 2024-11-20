@@ -1,7 +1,7 @@
 # Yahoo Finance API Wrapper
 
 A REST API wrapper for Yahoo Finance data built with Flask, providing real-time stock data, historical prices, company information, and earnings data. This is a wrapper on the popular yfinance python library.
-Built using Replit Agent.
+
 
 ## Features
 
