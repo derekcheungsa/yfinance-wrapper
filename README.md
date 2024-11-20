@@ -11,10 +11,6 @@ Built using Replit Agent.
 - Options chain data
 - Earnings estimates data
 - Analyst recommendations and ratings
-- Enterprise-grade features:
-  - Redis caching
-  - Rate limiting
-  - Robust error handling
 
 ## Installation
 
@@ -58,9 +54,6 @@ The server will start at `http://0.0.0.0:5000`
 
 The API implements rate limiting of 100 requests per minute per IP address.
 
-## Caching
-
-Responses are cached for 5 minutes to ensure optimal performance and reduce load on the Yahoo Finance API.
 
 ## Example Usage
 
