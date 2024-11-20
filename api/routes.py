@@ -88,7 +88,10 @@ def get_insider_trades():
             logger.debug(f"Raw institutional holders DataFrame:\n{inst_holders_df.to_string()}")
             
             # Convert DataFrame to records without any sorting or modification
-            for holder_data in inst_holders_df.to_dict('records'):
+            holder_records = inst_holders_df.to_dict('records')
+            logger.debug(f"Converted DataFrame records: {holder_records}")
+            
+            for holder_data in holder_records:
                 logger.debug(f"Processing holder data:\n{holder_data}")
                 
                 holder_shares = validate_numeric(holder_data.get('Shares'), 0)
@@ -108,7 +111,7 @@ def get_insider_trades():
                     'value': validate_numeric(holder_data.get('Value'), 0),
                     'date_reported': date_reported
                 }
-                logger.debug(f"Processed holder data: {processed_holder}")
+                logger.debug(f"Final processed holder entry: {processed_holder}")
                 institutional_holders.append(processed_holder)
 
         # Get major holders data
