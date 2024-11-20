@@ -610,3 +610,39 @@ def get_insider_trades():
     except Exception as e:
         logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
         return jsonify(error=f"Failed to fetch insider trades: {str(e)}"), 500
+
+# Added this endpoint to align with the intention of updating existing insider trades endpoint
+@api_bp.route('/stock/insider_trades_new', methods=['POST'])
+@rate_limiter.limit
+@cache.cached(timeout=300)
+def get_insider_trades_new():
+    """Get insider trading data for a given stock"""
+    if not request.is_json:
+        return jsonify(error="Request must be JSON"), 400
+
+    request_data = request.get_json()
+    if not request_data or 'ticker' not in request_data:
+        return jsonify(error="Missing required field: ticker"), 400
+
+    ticker = request_data['ticker']
+    if not validate_ticker(ticker):
+        return jsonify(error="Invalid ticker symbol"), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        institutional_holders = stock.institutional_holders
+        major_holders = stock.major_holders
+        mutualfund_holders = stock.mutualfund_holders
+
+        data = {
+            'symbol': ticker,
+            'institutional_holders': institutional_holders.to_dict('records') if institutional_holders is not None else None,
+            'major_holders': major_holders.to_dict('records') if major_holders is not None else None,
+            'mutualfund_holders': mutualfund_holders.to_dict('records') if mutualfund_holders is not None else None,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
+        return jsonify(error=f"Failed to fetch insider trades: {str(e)}"), 500
