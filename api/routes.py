@@ -66,46 +66,51 @@ def calculate_rating_distribution(recommendation_mean, num_analysts):
     return distribution
 
 def calculate_rating_trend(ticker, stock):
-    """Calculate rating trends over time for a given stock"""
     try:
-        # Get recommendations history
         recommendations = stock.recommendations
         if recommendations is None or recommendations.empty:
             return None
 
-        # Calculate the weighted rating for each period
         trends = []
+        # Convert period to datetime if it's a string
+        if 'period' in recommendations.columns:
+            recommendations['period'] = pd.to_datetime(recommendations['period'])
+
         for period, group in recommendations.groupby('period'):
-            total_ratings = sum([
-                group['strongBuy'].iloc[0],
-                group['buy'].iloc[0],
-                group['hold'].iloc[0],
-                group['sell'].iloc[0],
-                group['strongSell'].iloc[0]
-            ])
-            
-            if total_ratings > 0:
-                weighted_rating = (
-                    (1 * group['strongBuy'].iloc[0] +
-                     2 * group['buy'].iloc[0] +
-                     3 * group['hold'].iloc[0] +
-                     4 * group['sell'].iloc[0] +
-                     5 * group['strongSell'].iloc[0]) / total_ratings
+            try:
+                total_ratings = (
+                    group['strongBuy'].iloc[0] +
+                    group['buy'].iloc[0] +
+                    group['hold'].iloc[0] +
+                    group['sell'].iloc[0] +
+                    group['strongSell'].iloc[0]
                 )
                 
-                trend = {
-                    'period': period.strftime('%Y-%m-%d'),
-                    'weighted_rating': round(weighted_rating, 2),
-                    'total_analysts': int(total_ratings),
-                    'distribution': {
-                        'strongBuy': int(group['strongBuy'].iloc[0]),
-                        'buy': int(group['buy'].iloc[0]),
-                        'hold': int(group['hold'].iloc[0]),
-                        'sell': int(group['sell'].iloc[0]),
-                        'strongSell': int(group['strongSell'].iloc[0])
+                if total_ratings > 0:
+                    weighted_rating = (
+                        (1 * group['strongBuy'].iloc[0] +
+                         2 * group['buy'].iloc[0] +
+                         3 * group['hold'].iloc[0] +
+                         4 * group['sell'].iloc[0] +
+                         5 * group['strongSell'].iloc[0]) / total_ratings
+                    )
+                    
+                    trend = {
+                        'period': period.strftime('%Y-%m-%d') if hasattr(period, 'strftime') else str(period),
+                        'weighted_rating': round(weighted_rating, 2),
+                        'total_analysts': int(total_ratings),
+                        'distribution': {
+                            'strongBuy': int(group['strongBuy'].iloc[0]),
+                            'buy': int(group['buy'].iloc[0]),
+                            'hold': int(group['hold'].iloc[0]),
+                            'sell': int(group['sell'].iloc[0]),
+                            'strongSell': int(group['strongSell'].iloc[0])
+                        }
                     }
-                }
-                trends.append(trend)
+                    trends.append(trend)
+            except Exception as e:
+                logger.error(f"Error processing period {period}: {str(e)}")
+                continue
         
         return sorted(trends, key=lambda x: x['period'])
     except Exception as e:
