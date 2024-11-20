@@ -10,6 +10,7 @@ Built using Replit Agent.
 - Detailed company information
 - Options chain data
 - Earnings estimates data
+- Analyst recommendations and ratings
 - Enterprise-grade features:
   - Redis caching
   - Rate limiting
@@ -43,6 +44,11 @@ The server will start at `http://0.0.0.0:5000`
 ### Earnings Data
 - `GET /api/stock/{ticker}/earnings_estimate` - Get earnings estimates
 
+### Analyst Data
+- `POST /api/stock/analyst_recommendations` - Get analyst recommendations history
+- `POST /api/stock/analyst_ratings` - Get current analyst ratings summary
+- `POST /api/stock/price_targets` - Get analyst price targets
+
 ## Query Parameters
 
 - `period` (optional): Time period for historical data (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
@@ -73,6 +79,11 @@ options_data = response.json()
 params = {'period': '1y', 'interval': '1d'}
 response = requests.get('http://localhost:5000/api/stock/AAPL/history', params=params)
 historical_data = response.json()
+
+# Get analyst ratings
+response = requests.post('http://localhost:5000/api/stock/analyst_ratings', 
+    json={"ticker": "AAPL"})
+ratings_data = response.json()
 ```
 
 ## Error Handling
