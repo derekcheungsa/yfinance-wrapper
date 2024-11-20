@@ -239,31 +239,59 @@ def get_option_chain():
         stock = yf.Ticker(ticker)
         expiration_dates = stock.options[:3]  # Fetch next 3 expiration dates
 
+        if not expiration_dates:
+            return jsonify(error="No options data available for this ticker"), 404
+
         option_data = {
             'symbol': ticker,
             'expirations': {}
         }
 
         for date in expiration_dates:
-            options = stock.option_chain(date)
-            
-            # Replace NaN values with None for JSON serializability
-            calls = options.calls.map(lambda x: x if pd.notnull(x) else None)
-            puts = options.puts.map(lambda x: x if pd.notnull(x) else None)
+            try:
+                options = stock.option_chain(date)
+                
+                # Validate options data
+                if options is None or not hasattr(options, 'calls') or not hasattr(options, 'puts'):
+                    logger.warning(f"Invalid options data structure for {ticker} on {date}")
+                    continue
 
-            # Convert DataFrame to dictionary with custom NaN replacements
-            call_options = calls.to_dict(orient='records')
-            put_options = puts.to_dict(orient='records')
+                # Replace NaN values with None and convert numeric columns
+                def clean_options_data(df):
+                    # First replace all NaN values with None
+                    df = df.replace([np.inf, -np.inf], np.nan)
+                    df = df.fillna(None)
+                    
+                    # Convert numeric columns properly
+                    numeric_cols = ['strike', 'lastPrice', 'bid', 'ask', 'change', 'percentChange', 
+                                  'volume', 'openInterest', 'impliedVolatility', 'inTheMoney']
+                    for col in numeric_cols:
+                        if col in df.columns:
+                            df[col] = df[col].apply(lambda x: float(x) if x is not None else None)
+                    
+                    return df
 
-            option_data['expirations'][date] = {
-                'call_options': call_options,
-                'put_options': put_options
-            }
+                # Clean and convert DataFrames to records
+                calls = clean_options_data(options.calls).to_dict(orient='records')
+                puts = clean_options_data(options.puts).to_dict(orient='records')
+
+                option_data['expirations'][date] = {
+                    'call_options': calls,
+                    'put_options': puts
+                }
+
+            except Exception as e:
+                logger.error(f"Error processing options for date {date}: {str(e)}")
+                continue
+
+        if not option_data['expirations']:
+            return jsonify(error="Failed to fetch valid options data"), 404
 
         option_data['timestamp'] = datetime.datetime.now().isoformat()
-
         return jsonify(option_data)
+
     except Exception as e:
+        logger.error(f"Failed to fetch option chains for {ticker}: {str(e)}")
         return jsonify(error=f"Failed to fetch option chains: {str(e)}"), 500
 
 
