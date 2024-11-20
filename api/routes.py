@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from api.extensions import cache
 import yfinance as yf
-from .utils import validate_ticker, RateLimiter
+from .utils import validate_ticker, RateLimiter, validate_tickers, process_tickers_parallel
 import datetime
 import pandas as pd
 import numpy as np
@@ -489,7 +489,6 @@ def get_analyst_recommendations():
         stock = yf.Ticker(ticker)
         recommendations = stock.recommendations
         
-        # Debug logging
         logger.info(f"Raw recommendations data for {ticker}: {recommendations}")
         
         if recommendations is None or recommendations.empty:
@@ -499,21 +498,24 @@ def get_analyst_recommendations():
                 'timestamp': datetime.datetime.now().isoformat()
             })
 
-        # Convert DataFrame to records with proper date handling
+        # Convert recommendations DataFrame to properly formatted records
         recommendations_list = []
-        for idx, row in recommendations.iterrows():
-            try:
-                rec = {
-                    'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx),
-                    'firm': row.get('Firm', None),
-                    'to_grade': row.get('To Grade', None),
-                    'from_grade': row.get('From Grade', None),
-                    'action': row.get('Action', None)
-                }
-                recommendations_list.append(rec)
-            except Exception as e:
-                logger.error(f"Error processing recommendation row: {e}")
-                continue
+        for period, row in recommendations.iterrows():
+            rec = {
+                'period': row.name if isinstance(row.name, str) else f"{row.name}m",
+                'ratings': {
+                    'strongBuy': int(row['strongBuy']) if 'strongBuy' in row and pd.notnull(row['strongBuy']) else 0,
+                    'buy': int(row['buy']) if 'buy' in row and pd.notnull(row['buy']) else 0,
+                    'hold': int(row['hold']) if 'hold' in row and pd.notnull(row['hold']) else 0,
+                    'sell': int(row['sell']) if 'sell' in row and pd.notnull(row['sell']) else 0,
+                    'strongSell': int(row['strongSell']) if 'strongSell' in row and pd.notnull(row['strongSell']) else 0
+                },
+                'total_analysts': sum([
+                    int(row[col]) if col in row and pd.notnull(row[col]) else 0
+                    for col in ['strongBuy', 'buy', 'hold', 'sell', 'strongSell']
+                ])
+            }
+            recommendations_list.append(rec)
 
         return jsonify({
             'symbol': ticker,
