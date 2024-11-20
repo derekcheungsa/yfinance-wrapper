@@ -501,7 +501,7 @@ def get_analyst_recommendations():
             
             # Format dates to ISO format
             for rec in recommendations_list:
-                rec['Date'] = rec['Date'].isoformat() if pd.notnull(rec['Date']) else None
+                rec['Date'] = rec['Date'].strftime('%Y-%m-%d') if pd.notnull(rec['Date']) else None
             
             return {
                 'symbol': ticker,
