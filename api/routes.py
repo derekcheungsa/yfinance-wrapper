@@ -87,12 +87,12 @@ def get_insider_trades():
             logger.info(f"Processing institutional holders for {ticker}")
             logger.debug(f"Raw institutional holders DataFrame:\n{inst_holders_df.to_string()}")
             
-            for _, holder in inst_holders_df.iterrows():
-                # Log raw holder data for debugging
-                logger.debug(f"Processing holder row:\n{holder.to_string()}")
+            # Convert DataFrame to records without any sorting or modification
+            for holder_data in inst_holders_df.to_dict('records'):
+                logger.debug(f"Processing holder data:\n{holder_data}")
                 
-                holder_shares = validate_numeric(holder.get('Shares'), 0)
-                raw_date = holder.get('Date Reported')
+                holder_shares = validate_numeric(holder_data.get('Shares'), 0)
+                raw_date = holder_data.get('Date Reported')
                 logger.debug(f"Raw date from holder: {raw_date}, type: {type(raw_date)}")
                 
                 date_reported = format_date(raw_date)
@@ -101,15 +101,15 @@ def get_insider_trades():
                 # Calculate percentage of shares outstanding
                 pct_out = round((holder_shares / shares_outstanding * 100), 2) if shares_outstanding > 0 else 0.0
                 
-                holder_data = {
-                    'holder': holder.get('Holder', ''),
+                processed_holder = {
+                    'holder': holder_data.get('Holder', ''),
                     'shares': holder_shares,
                     'pct_out': pct_out,
-                    'value': validate_numeric(holder.get('Value'), 0),
+                    'value': validate_numeric(holder_data.get('Value'), 0),
                     'date_reported': date_reported
                 }
-                logger.debug(f"Processed holder data: {holder_data}")
-                institutional_holders.append(holder_data)
+                logger.debug(f"Processed holder data: {processed_holder}")
+                institutional_holders.append(processed_holder)
 
         # Get major holders data
         major_holders = []
@@ -132,6 +132,11 @@ def get_insider_trades():
             'major_holders': major_holders,
             'timestamp': datetime.datetime.now().isoformat()
         }
+        
+        # Log the final response data for verification
+        logger.debug(f"Final response data for {ticker}:")
+        for holder in data['institutional_holders']:
+            logger.debug(f"Holder: {holder['holder']}, Date: {holder['date_reported']}")
 
         return jsonify(data)
 
@@ -139,6 +144,7 @@ def get_insider_trades():
         logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
         return jsonify(error=f"Failed to fetch insider trades data: {str(e)}"), 500
 
+    
 def calculate_rating_distribution(recommendation_mean, num_analysts):
     """
     Calculate rating distribution based on recommendation mean and total analysts.
