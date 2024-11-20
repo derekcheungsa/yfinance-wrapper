@@ -580,32 +580,65 @@ def get_insider_trades():
 
     try:
         stock = yf.Ticker(ticker)
-        insider_trades = stock.institutional_holders
         
-        if insider_trades is None or insider_trades.empty:
+        try:
+            # Get institutional holders and insider trades
+            institutional_holders = stock.institutional_holders
+            insider_trades = stock.insider_trades
+            shares_outstanding = validate_numeric(stock.info.get('sharesOutstanding'))
+
+            if insider_trades is None or insider_trades.empty:
+                return jsonify({
+                    'symbol': ticker,
+                    'insider_trades': [],
+                    'timestamp': datetime.datetime.now().isoformat()
+                })
+
+            # Process insider trades data
+            trades_list = []
+            for _, trade in insider_trades.iterrows():
+                # Calculate percentage ownership
+                shares = validate_numeric(trade.get('Shares'))
+                pct_out = None
+                
+                # Primary calculation using direct shares data
+                if shares is not None and shares_outstanding:
+                    pct_out = (shares / shares_outstanding) * 100
+                
+                # Fallback calculation using value and stock price if available
+                if pct_out is None:
+                    value = validate_numeric(trade.get('Value'))
+                    current_price = validate_numeric(stock.info.get('currentPrice'))
+                    if value is not None and current_price and current_price > 0:
+                        estimated_shares = value / current_price
+                        pct_out = (estimated_shares / shares_outstanding) * 100 if shares_outstanding else None
+
+                trade_data = {
+                    'insider': str(trade.get('Insider')),
+                    'title': str(trade.get('Title')),
+                    'trade_type': str(trade.get('Transaction')),
+                    'price': validate_numeric(trade.get('Price')),
+                    'shares': shares,
+                    'value': validate_numeric(trade.get('Value')),
+                    'shares_total': validate_numeric(trade.get('Shares Total')),
+                    'pct_out': round(pct_out, 6) if pct_out is not None else None,
+                    'date': trade.get('Date').strftime('%Y-%m-%d') if hasattr(trade.get('Date'), 'strftime') else str(trade.get('Date'))
+                }
+                trades_list.append(trade_data)
+
+            # Sort trades by date (most recent first)
+            trades_list.sort(key=lambda x: x['date'], reverse=True)
+
             return jsonify({
                 'symbol': ticker,
-                'insider_trades': [],
+                'insider_trades': trades_list,
+                'shares_outstanding': shares_outstanding,
                 'timestamp': datetime.datetime.now().isoformat()
             })
 
-        # Convert insider trades DataFrame to list of records
-        trades_list = []
-        for _, row in insider_trades.iterrows():
-            trade_data = {
-                'holder': str(row.get('Holder', '')),
-                'shares': int(row.get('Shares', 0)),
-                'date_reported': row.get('Date Reported', '').strftime('%Y-%m-%d') if pd.notnull(row.get('Date Reported')) else None,
-                'value': float(row.get('Value', 0)) if pd.notnull(row.get('Value')) else None,
-                'pct_out': float(row.get('% Out', 0)) if pd.notnull(row.get('% Out')) else None
-            }
-            trades_list.append(trade_data)
-
-        return jsonify({
-            'symbol': ticker,
-            'insider_trades': trades_list,
-            'timestamp': datetime.datetime.now().isoformat()
-        })
+        except Exception as e:
+            logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
+            return jsonify(error=f"Failed to fetch insider trades: {str(e)}"), 500
 
     except Exception as e:
         logger.error(f"Error fetching insider trades for {ticker}: {str(e)}")
